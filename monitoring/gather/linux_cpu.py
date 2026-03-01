@@ -46,7 +46,7 @@ class Cpu:
     # Fields that should be coerced to float.
     FLOAT_STATS = ["bogomips", "cpu MHz"]
     # Fields whose values are space-separated lists.
-    LIST_STATS = ["flags", "bugs", "softirq"]
+    LIST_STATS = ["flags", "bugs"]
 
     def GetCpuinfo(self):
         """Parse /proc/cpuinfo and return a dict of hardware info for cpu0.
@@ -68,6 +68,9 @@ class Cpu:
             while cpuinfo_line != "":
                 # Lines look like:  model name      : AMD EPYC 7571
                 split = cpuinfo_line.split(":", 1)
+                if len(split) < 2:
+                    cpuinfo_line = str(reader.readline()).strip()
+                    continue
                 split[0] = split[0].strip()
                 split[1] = split[1].strip()
                 if split[0] in self.INTEGER_STATS:
@@ -145,7 +148,9 @@ class Cpu:
                     # The "intr" line marks the end of the per-CPU section.
                     # Pull softirq counts from /proc/softirqs now so they can
                     # be attached to the already-parsed CPU entries.
-                    cpustats_values = self.GetCpuSoftIrqs(cpustats_values)
+                    result = self.GetCpuSoftIrqs(cpustats_values)
+                    if result is not False:
+                        cpustats_values = result
                 else:
                     split = stat_line.split()
                     key = split.pop(0)

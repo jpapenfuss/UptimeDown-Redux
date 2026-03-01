@@ -17,20 +17,6 @@ import time
 
 logger = logging.getLogger("monitoring")
 
-# All statvfs fields, in the order Python returns them.
-STATVFS_KEYS = [
-    "f_bsize",
-    "f_frsize",
-    "f_blocks",
-    "f_bfree",
-    "f_bavail",
-    "f_files",
-    "f_ffree",
-    "f_favail",
-    "f_flag",
-    "f_namemax",
-]
-
 # Filesystem types that carry no real block storage and should be skipped.
 # Add entries here as new virtual fs types are encountered.
 FS_IGNORE = [
@@ -59,10 +45,6 @@ FS_IGNORE = [
     "overlay",
 ]
 
-# Column names for a /proc/mounts or /etc/mtab line, in order.
-MOUNT_KEYS = ["device", "path", "filesystem", "options", "dump", "pass"]
-
-
 class Filesystems:
 
     def get_filesystems(self):
@@ -89,27 +71,6 @@ class Filesystems:
             raise RuntimeError(f"Can't open either {proc_mounts_path} or {mtab_path} for reading.")
 
         return filesystems
-
-    def explode_options(self, options):
-        """Parse a comma-separated mount options string into a dict.
-
-        Options without a value (e.g. "rw", "relatime") are stored with an
-        empty string as their value. Options with a numeric value (e.g.
-        "stripe=128") have the value coerced to int.
-
-        Example input:  "rw,relatime,stripe=128,data=ordered"
-        Example output: {"rw": "", "relatime": "", "stripe": 128, "data": "ordered"}
-        """
-        myopts = {}
-        for opt in options.split(","):
-            split_equals = opt.split("=")
-            if len(split_equals) == 2:
-                if split_equals[1].isdigit():
-                    split_equals[1] = int(split_equals[1])
-                myopts[split_equals[0]] = split_equals[1]
-            else:
-                myopts[split_equals[0]] = ""
-        return myopts
 
     def explode_statvfs(self, statvfs):
         """Convert an os.statvfs_result into a dict with derived space metrics.
@@ -150,18 +111,13 @@ class Filesystems:
         fs_stats["bytesFree"]      = fs_stats["f_frsize"] * fs_stats["f_bfree"]
         fs_stats["bytesAvailable"] = fs_stats["f_frsize"] * fs_stats["f_bavail"]
         try:
-            fs_stats["pctFree"]      = (fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 100
-            fs_stats["pctAvailable"] = (fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 100
-            fs_stats["pctUsed"]      = (1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 100
-            fs_stats["pctReserved"]  = (1.0 - fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 100
+            fs_stats["pctFree"]      = int((fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pctAvailable"] = int((fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pctUsed"]      = int((1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pctReserved"]  = int((1.0 - fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
         except ZeroDivisionError:
             # Should be unreachable: we already excluded f_blocks == 0 above.
             raise RuntimeError(f"ZeroDivisionError on f_blocks for a mount with f_blocks != 0")
-        return fs_stats
-
-    def process_statvfs(self, statvfs):
-        """Placeholder for additional statvfs post-processing. Not yet used."""
-        fs_stats = {}
         return fs_stats
 
     def get_filesystems_from_proc(self, proc_mounts_path):
@@ -180,7 +136,7 @@ class Filesystems:
             while mount_line != "":
                 mount = mount_line.split()
                 filesystem = self.process_mount(mount)
-                if filesystem is not None:
+                if filesystem:
                     fs.update(filesystem)
                 mount_line = str(reader.readline()).strip()
         fs["_time"] = time.time()
@@ -208,7 +164,11 @@ class Filesystems:
         """
         if mount[2] in FS_IGNORE or mount[1] in self.fs_reject:
             return {}
-        fs_stats = self.explode_statvfs(os.statvfs(mount[1]))
+        try:
+            fs_stats = self.explode_statvfs(os.statvfs(mount[1]))
+        except OSError as e:
+            logger.warning("statvfs(%s) failed: %s — skipping", mount[1], e)
+            return {}
         if fs_stats is None:
             # No block storage — remember this path to skip it next time.
             self.fs_reject.append(mount[1])

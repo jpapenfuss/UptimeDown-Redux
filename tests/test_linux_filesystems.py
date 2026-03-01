@@ -7,7 +7,7 @@ from types import SimpleNamespace
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from monitoring.gather import linux_filesystems
-from monitoring.gather.linux_filesystems import Filesystems, FS_IGNORE
+from monitoring.gather.linux_filesystems import Filesystems
 
 # ---------------------------------------------------------------------------
 # Sample /proc/mounts content
@@ -30,38 +30,6 @@ def _make_statvfs(f_frsize=4096, f_blocks=1000000, f_bfree=500000, f_bavail=4500
         f_bfree=f_bfree, f_bavail=f_bavail, f_files=f_files,
         f_ffree=f_ffree, f_favail=f_favail, f_flag=f_flag, f_namemax=f_namemax,
     )
-
-
-class TestExplodeOptions(unittest.TestCase):
-
-    def _fs(self):
-        fs = Filesystems.__new__(Filesystems)
-        fs.fs_reject = []
-        return fs
-
-    def test_flag_only_option(self):
-        result = self._fs().explode_options("rw")
-        self.assertEqual(result, {"rw": ""})
-
-    def test_string_value_option(self):
-        result = self._fs().explode_options("data=ordered")
-        self.assertEqual(result, {"data": "ordered"})
-
-    def test_numeric_value_option(self):
-        result = self._fs().explode_options("stripe=128")
-        self.assertEqual(result["stripe"], 128)
-        self.assertIsInstance(result["stripe"], int)
-
-    def test_mixed_options(self):
-        result = self._fs().explode_options("rw,relatime,stripe=128,data=ordered")
-        self.assertEqual(result["rw"], "")
-        self.assertEqual(result["relatime"], "")
-        self.assertEqual(result["stripe"], 128)
-        self.assertEqual(result["data"], "ordered")
-
-    def test_single_option_no_comma(self):
-        result = self._fs().explode_options("ro")
-        self.assertEqual(result, {"ro": ""})
 
 
 class TestExplodeStatvfs(unittest.TestCase):
@@ -199,6 +167,13 @@ class TestProcessMount(unittest.TestCase):
             result = self._fs().process_mount(self._mount_line(options="rw,relatime"))
         entry = result["/mnt"]
         self.assertEqual(entry["options"], "rw,relatime")
+
+    def test_statvfs_oserror_returns_empty(self):
+        # Stale NFS mounts, disappeared bind mounts, etc. raise OSError.
+        # process_mount() must catch it and return {} rather than crashing.
+        with patch("os.statvfs", side_effect=OSError("Stale file handle")):
+            result = self._fs().process_mount(self._mount_line())
+        self.assertEqual(result, {})
 
 
 class TestGetFilesystems(unittest.TestCase):

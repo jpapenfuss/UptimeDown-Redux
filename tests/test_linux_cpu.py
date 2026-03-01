@@ -125,6 +125,14 @@ class TestGetCpuinfo(unittest.TestCase):
             result = cpu.GetCpuinfo()
         self.assertIs(result, False)
 
+    def test_line_without_colon_is_skipped(self):
+        # A cpuinfo line with no colon must not raise IndexError.
+        content = "processor\t: 0\nno_colon_here\nmodel name\t: Test CPU\n\n"
+        result = self._make_cpu(content)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["processor"], 0)
+        self.assertNotIn("no_colon_here", result)
+
 
 class TestGetCpuProcStats(unittest.TestCase):
 
@@ -192,6 +200,26 @@ class TestGetCpuProcStats(unittest.TestCase):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
             result = cpu.GetCpuProcStats()
         self.assertIs(result, False)
+
+    def test_softirqs_unreadable_does_not_crash(self):
+        # GetCpuSoftIrqs returning False must not cause a TypeError on
+        # the subsequent cpustats_values["_time"] assignment.
+        def caniread_side(path):
+            # /proc/stat is readable; /proc/softirqs is not
+            return "softirqs" not in path
+
+        def fake_open(path, *args, **kwargs):
+            return io.StringIO(STAT_SAMPLE)
+
+        with patch("monitoring.gather.util.caniread", side_effect=caniread_side), \
+             patch("builtins.open", side_effect=fake_open), \
+             patch("time.time", return_value=2000.0):
+            cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
+            result = cpu.GetCpuProcStats()
+        # Must return a valid dict (not crash, not return False)
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result["_time"], 2000.0)
+        self.assertIn("cpu", result)
 
 
 class TestGetCpuSoftIrqs(unittest.TestCase):

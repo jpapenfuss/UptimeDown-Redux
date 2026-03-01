@@ -97,10 +97,10 @@ class AixFilesystems:
                     entry["bytesTotal"]     = st.f_frsize * st.f_blocks
                     entry["bytesFree"]      = st.f_frsize * st.f_bfree
                     entry["bytesAvailable"] = st.f_frsize * st.f_bavail
-                    entry["pctFree"]        = (st.f_bfree  / st.f_blocks) * 100
-                    entry["pctAvailable"]   = (st.f_bavail / st.f_blocks) * 100
-                    entry["pctUsed"]        = (1.0 - st.f_bfree  / st.f_blocks) * 100
-                    entry["pctReserved"]    = (1.0 - st.f_bavail / st.f_blocks) * 100
+                    entry["pctFree"]        = int((st.f_bfree  / st.f_blocks) * 1000000) / 10000
+                    entry["pctAvailable"]   = int((st.f_bavail / st.f_blocks) * 1000000) / 10000
+                    entry["pctUsed"]        = int((1.0 - st.f_bfree  / st.f_blocks) * 1000000) / 10000
+                    entry["pctReserved"]    = int((1.0 - st.f_bavail / st.f_blocks) * 1000000) / 10000
             except OSError:
                 entry["mounted"] = False
 
