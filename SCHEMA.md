@@ -25,7 +25,10 @@ changes before modifying the database code.
   inside each gatherer module, not in the storage layer. The only exceptions are
   AIX-only and Linux-only fields (which are simply absent/NULL on the other
   platform) and the Linux disk table (see `disk_devices_linux` note below).
-- **`bytesTotal`/`bytesFree`/`bytesAvailable` use `f_frsize`** (fundamental
+- **All column names are snake_case.** Gatherer dicts must use snake_case keys
+  at output time (e.g. `bytes_total`, `pct_used`, `mem_total`). camelCase keys
+  are never stored.
+- **`bytes_total`/`bytes_free`/`bytes_available` use `f_frsize`** (fundamental
   block size) on both platforms, not `f_bsize` (preferred I/O block size).
   These differ on some filesystems; `f_frsize` is the POSIX-correct value.
 
@@ -243,6 +246,60 @@ CREATE INDEX IF NOT EXISTS idx_disk_devices_host_name
 
 ---
 
+### `net_interfaces`
+
+Per-interface network counters. One row per interface per collection run.
+All counter fields are cumulative since boot; compute rates by differencing
+adjacent rows at query time.
+
+Linux source: `/proc/net/dev`. AIX source: `perfstat_netinterface_t`.
+Platform-specific columns are NULL on the other platform.
+
+```sql
+CREATE TABLE IF NOT EXISTS net_interfaces (
+    id              INTEGER PRIMARY KEY,
+    host_id         INTEGER NOT NULL REFERENCES hosts(id),
+    collected_at    REAL    NOT NULL,
+
+    iface           TEXT    NOT NULL,   -- interface name (e.g. 'eth0', 'en0', 'en1')
+
+    -- Available on both Linux (/proc/net/dev) and AIX (perfstat_netinterface_t)
+    ibytes          INTEGER,    -- bytes received
+    ipackets        INTEGER,    -- packets received
+    ierrors         INTEGER,    -- input errors
+    obytes          INTEGER,    -- bytes sent
+    opackets        INTEGER,    -- packets sent
+    oerrors         INTEGER,    -- output errors
+    collisions      INTEGER,    -- collisions (CSMA interfaces)
+
+    -- Linux-only fields (from /proc/net/dev column order)
+    idrop           INTEGER,    -- rx packets dropped
+    ififo           INTEGER,    -- rx FIFO buffer errors
+    iframe          INTEGER,    -- rx frame alignment errors
+    icompressed     INTEGER,    -- rx compressed packets
+    imulticast      INTEGER,    -- rx multicast frames
+    odrop           INTEGER,    -- tx packets dropped
+    ofifo           INTEGER,    -- tx FIFO buffer errors
+    ocarrier        INTEGER,    -- tx carrier sense errors
+    ocompressed     INTEGER,    -- tx compressed packets
+
+    -- AIX-only fields (from perfstat_netinterface_t)
+    mtu             INTEGER,    -- maximum transmission unit (bytes)
+    bitrate         INTEGER,    -- adapter link speed (bits/sec)
+    if_iqdrops      INTEGER,    -- input queue drops
+    if_arpdrops     INTEGER,    -- drops due to missing ARP entry
+    description     TEXT,       -- adapter description from ODM (e.g. 'Virtual I/O Ethernet Adapter')
+    type            INTEGER     -- interface type code (1=Ethernet, 6=token ring, etc.)
+);
+
+CREATE INDEX IF NOT EXISTS idx_net_interfaces_host_time
+    ON net_interfaces (host_id, collected_at);
+CREATE INDEX IF NOT EXISTS idx_net_interfaces_host_iface
+    ON net_interfaces (host_id, iface, collected_at);
+```
+
+---
+
 ### `filesystems`
 
 One row per configured filesystem per collection run. Covers both mounted and
@@ -270,13 +327,14 @@ CREATE TABLE IF NOT EXISTS filesystems (
     options         TEXT,               -- mount options string
 
     -- Space stats (NULL when mounted = 0, or when f_blocks = 0)
+    -- Truncated to 4 decimal places at collection time (never scientific notation).
     bytes_total     INTEGER,            -- f_frsize * f_blocks
     bytes_free      INTEGER,            -- f_frsize * f_bfree
     bytes_available INTEGER,            -- f_frsize * f_bavail (excludes reserved)
-    pct_used        REAL,               -- (1 - f_bfree/f_blocks) * 100
-    pct_available   REAL,               -- (f_bavail/f_blocks) * 100
-    pct_free        REAL,               -- (f_bfree/f_blocks) * 100
-    pct_reserved    REAL,               -- (1 - f_bavail/f_blocks) * 100
+    pct_used        REAL,               -- (1 - f_bfree/f_blocks) * 100, truncated
+    pct_available   REAL,               -- (f_bavail/f_blocks) * 100, truncated
+    pct_free        REAL,               -- (f_bfree/f_blocks) * 100, truncated
+    pct_reserved    REAL,               -- (1 - f_bavail/f_blocks) * 100, truncated
 
     -- Raw statvfs fields (NULL when not mounted)
     f_bsize         INTEGER,            -- preferred I/O block size
@@ -303,9 +361,10 @@ CREATE INDEX IF NOT EXISTS idx_filesystems_mounted
 ### `memory` (Linux only)
 
 One row per collection run. All `/proc/meminfo` fields stored as bytes (already
-converted by `util.tobytes()`). Columns are the exact field names from
-`/proc/meminfo` with the colon stripped and converted to lowercase with
-underscores.
+converted by `util.tobytes()`). Column names are the `/proc/meminfo` field names
+with the colon stripped, lowercased, and converted to snake_case
+(e.g. `MemTotal` → `mem_total`, `HugePages_Total` → `huge_pages_total`).
+This conversion is done inside `linux_memory.py` at output time.
 
 Only the most universally present fields are listed below. Additional fields
 present on the host are serialised to the `extra_json` column as a JSON object
@@ -399,7 +458,21 @@ LIMIT 10;
 SELECT
     (b.xrate - a.xrate) / (b.collected_at - a.collected_at) AS read_iops
 FROM disk_total a
-JOIN disk_total b ...;
+JOIN disk_total b ON b.host_id = a.host_id
+    AND b.id = (SELECT MIN(id) FROM disk_total WHERE id > a.id AND host_id = a.host_id)
+WHERE a.host_id = 1;
+
+-- Network throughput (bytes/sec) on a given interface between two samples
+SELECT
+    n.iface,
+    (b.ibytes - a.ibytes) / (b.collected_at - a.collected_at) AS rx_bytes_per_sec,
+    (b.obytes - a.obytes) / (b.collected_at - a.collected_at) AS tx_bytes_per_sec
+FROM net_interfaces a
+JOIN net_interfaces b ON b.host_id = a.host_id AND b.iface = a.iface
+    AND b.id = (SELECT MIN(id) FROM net_interfaces WHERE id > a.id AND host_id = a.host_id AND iface = a.iface)
+JOIN net_interfaces n ON n.id = a.id
+WHERE a.host_id = 1 AND a.iface = 'eth0'
+ORDER BY a.collected_at DESC LIMIT 10;
 ```
 
 ## AIX loadavg Conversion
