@@ -20,7 +20,7 @@ from log_setup import log_setup
 _PLATFORM = sys.platform
 
 if _PLATFORM == "aix":
-    from gather import aix_cpu, aix_disk, aix_filesystems
+    from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory
 elif _PLATFORM == "linux":
     from gather import linux_cpu, linux_disk, linux_memory, linux_filesystems
 else:
@@ -33,9 +33,10 @@ def main():
 
     if _PLATFORM == "aix":
         timebeforecpu = time.time()
-        mycpu  = aix_cpu.AixCpu()
-        mydisk = aix_disk.AixDisk()
-        myfs   = aix_filesystems.AixFilesystems()
+        mycpu    = aix_cpu.AixCpu()
+        mydisk   = aix_disk.AixDisk()
+        myfs     = aix_filesystems.AixFilesystems()
+        mymemory = aix_memory.AixMemory()
         timeafterfs = time.time()
 
         timebeforejson = time.time()
@@ -44,6 +45,7 @@ def main():
             "disks":       mydisk.blockdevices,
             "disk_total":  mydisk.disk_total,
             "filesystems": myfs.filesystems,
+            "memory":      mymemory.stats,
         }, indent=4)
         timeafterjson = time.time()
 
@@ -53,6 +55,7 @@ def main():
         print(f"Time from start to end of CPU Stat: \t\t\t{mycpu.cpustat_values['_time'] - timestart}")
         print(f"Time from end of CPU to end of Disk: \t\t\t{mydisk.disk_total['_time'] - mycpu.cpustat_values['_time']}")
         print(f"Time from end of Disk to end of FS: \t\t\t{myfs.filesystems['_time'] - mydisk.disk_total['_time']}")
+        print(f"Time from end of FS to end of Memory: \t\t\t{mymemory.stats['memory']['_time'] - myfs.filesystems['_time']}")
         print(f"Time from start to end of gathering stats: \t\t{timeafterfs - timebeforecpu}")
         print(f"Time to generate json: \t\t\t\t\t{timeafterjson - timebeforejson}")
 
