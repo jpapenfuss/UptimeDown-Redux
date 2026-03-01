@@ -20,9 +20,9 @@ from log_setup import log_setup
 _PLATFORM = sys.platform
 
 if _PLATFORM == "aix":
-    from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory
+    from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory, aix_network
 elif _PLATFORM == "linux":
-    from gather import linux_cpu, linux_disk, linux_memory, linux_filesystems
+    from gather import linux_cpu, linux_disk, linux_memory, linux_filesystems, linux_network
 else:
     raise RuntimeError(f"Unsupported platform: {_PLATFORM!r}")
 
@@ -37,6 +37,7 @@ def main():
         mydisk   = aix_disk.AixDisk()
         myfs     = aix_filesystems.AixFilesystems()
         mymemory = aix_memory.AixMemory()
+        mynet    = aix_network.AixNetwork()
         timeafterfs = time.time()
 
         timebeforejson = time.time()
@@ -46,6 +47,7 @@ def main():
             "disk_total":  mydisk.disk_total,
             "filesystems": myfs.filesystems,
             "memory":      mymemory.stats,
+            "network":     mynet.interfaces,
         }, indent=4)
         timeafterjson = time.time()
 
@@ -64,6 +66,7 @@ def main():
         mycpu    = linux_cpu.Cpu()
         mymemory = linux_memory.Memory()
         myfs     = linux_filesystems.Filesystems()
+        mynet    = linux_network.Network()
         timeafterfs = time.time()
 
         timebeforejson = time.time()
@@ -72,6 +75,7 @@ def main():
             "cpuinfo":     mycpu.cpuinfo_values,
             "memory":      mymemory.stats,
             "filesystems": myfs.filesystems,
+            "network":     mynet.interfaces,
         }, indent=4)
         timeafterjson = time.time()
 
