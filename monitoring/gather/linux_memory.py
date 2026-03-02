@@ -71,7 +71,9 @@ class Memory:
                 line[1] = int(line[1])
                 # Three tokens means there's a unit multiplier (e.g. "kB").
                 if len(line) == 3:
-                    line[1] = util.tobytes(line[1], line[2])
+                    # /proc/meminfo uses 'kB' to mean 1024 bytes; normalize to IEC.
+                    unit = 'KiB' if line[2] == 'kB' else line[2]
+                    line[1] = util.tobytes(line[1], unit)
                 meminfo_values[key] = line[1]
                 meminfo_line = str(reader.readline()).strip()
         meminfo_values["_time"] = time.time()
