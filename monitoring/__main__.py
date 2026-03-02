@@ -55,10 +55,15 @@ def collect_once(logger, json_module):
         timeafterfs = time.time()
 
         timebeforejson = time.time()
+        # Capture ncpus_enumerated separately for consistency tracking during SMT transitions
+        ncpus_enumerated = len(mycpu.cpus) if mycpu.cpus and mycpu.cpus is not False else 0
+        cpustats_with_enum = dict(mycpu.cpustat_values) if mycpu.cpustat_values else {}
+        cpustats_with_enum["ncpus_enumerated"] = ncpus_enumerated
+
         jsonout = json_module.dumps({
             "system_id":   _SYSTEM_ID,
             "collected_at": collected_at,
-            "cpustats":    mycpu.cpustat_values,
+            "cpustats":    cpustats_with_enum,
             "cpus":        mycpu.cpus,
             "disks":       mydisk.blockdevices,
             "disk_total":  mydisk.disk_total,
