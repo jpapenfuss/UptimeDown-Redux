@@ -185,12 +185,23 @@ class TestProcessMount(unittest.TestCase):
         self.assertEqual(result, {})
         self.assertIn("/mnt", fs.fs_reject)
 
-    def test_options_kept_as_string(self):
+    def test_options_stored_as_json(self):
         st = _make_statvfs()
         with patch("os.statvfs", return_value=st):
             result = self._fs().process_mount(self._mount_line(options="rw,relatime"))
-        entry = result["/mnt"]
-        self.assertEqual(entry["options"], "rw,relatime")
+        import json
+        opts = json.loads(result["/mnt"]["options"])
+        self.assertEqual(opts, {"rw": True, "relatime": True})
+
+    def test_options_key_value_parsed(self):
+        st = _make_statvfs()
+        with patch("os.statvfs", return_value=st):
+            result = self._fs().process_mount(self._mount_line(options="rw,size=1g,uid=0"))
+        import json
+        opts = json.loads(result["/mnt"]["options"])
+        self.assertTrue(opts["rw"])
+        self.assertEqual(opts["size"], "1g")
+        self.assertEqual(opts["uid"], "0")
 
     def test_statvfs_oserror_returns_empty(self):
         # Stale NFS mounts, disappeared bind mounts, etc. raise OSError.

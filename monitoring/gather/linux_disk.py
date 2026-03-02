@@ -11,6 +11,8 @@
 #   https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
 #   https://www.kernel.org/doc/Documentation/admin-guide/iostats.rst
 #   https://www.kernel.org/doc/Documentation/block/queue-sysfs.txt
+import sys
+sys.dont_write_bytecode = True
 import logging
 import os
 import time

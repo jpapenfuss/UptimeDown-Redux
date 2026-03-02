@@ -8,6 +8,8 @@
 #
 # Both attributes include a '_time' key. Call __init__() (re-instantiate) or
 # add an UpdateValues() method to refresh.
+import sys
+sys.dont_write_bytecode = True
 import ctypes
 import time
 import logging

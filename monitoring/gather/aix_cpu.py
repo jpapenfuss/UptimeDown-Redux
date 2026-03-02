@@ -8,6 +8,8 @@
 #
 # Call UpdateValues() to refresh. The class interface mirrors Linux Cpu so that
 # __main__.py can treat them interchangeably (noting AIX has no cpuinfo_values).
+import sys
+sys.dont_write_bytecode = True
 import ctypes
 import time
 import logging

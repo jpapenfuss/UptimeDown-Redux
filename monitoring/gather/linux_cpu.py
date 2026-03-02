@@ -6,6 +6,8 @@
 #
 # Both dicts include a '_time' key (Unix timestamp) recording when the data
 # was captured.  Call UpdateValues() to refresh.
+import sys
+sys.dont_write_bytecode = True
 import time
 import logging
 

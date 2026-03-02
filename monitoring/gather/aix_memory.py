@@ -14,6 +14,8 @@
 #             scans, cycles, pgsteals
 #   All byte values are in bytes (pages converted by multiplying by PAGE_SIZE).
 #   All counter values are cumulative since boot.
+import sys
+sys.dont_write_bytecode = True
 import ctypes
 import time
 import logging

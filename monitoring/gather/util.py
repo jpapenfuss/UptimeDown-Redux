@@ -1,4 +1,6 @@
 # Shared utility functions used by all gatherer modules.
+import sys
+sys.dont_write_bytecode = True
 import os
 
 

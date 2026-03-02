@@ -11,6 +11,9 @@
 # References:
 #   https://docs.python.org/3/library/os.html#os.statvfs
 #   https://man7.org/linux/man-pages/man3/statvfs.3.html
+import sys
+sys.dont_write_bytecode = True
+import json
 import logging
 import os
 import time
@@ -47,6 +50,26 @@ FS_IGNORE = [
 ]
 
 class Filesystems:
+
+    @staticmethod
+    def _parse_options(options_str):
+        """Parse a comma-separated mount options string into a dict.
+
+        Bare flags (e.g. 'rw', 'noatime') map to True.
+        Key=value pairs (e.g. 'size=1g', 'uid=0') map to the value string.
+        The result is intended to be stored as JSON via json.dumps().
+        """
+        opts = {}
+        for token in options_str.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "=" in token:
+                k, _, v = token.partition("=")
+                opts[k.strip()] = v.strip()
+            else:
+                opts[token] = True
+        return opts
 
     def get_filesystems(self):
         """Determine the best available mount source and return parsed filesystems.
@@ -186,7 +209,7 @@ class Filesystems:
             "mountpoint": mount[1],
             "dev":        mount[0],
             "vfs":        mount[2],
-            "options":    mount[3],   # keep as raw string; parsed form not needed for storage
+            "options":    json.dumps(self._parse_options(mount[3])),
             "mounted":    True,
         }
         entry.update(fs_stats)
