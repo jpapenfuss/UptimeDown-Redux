@@ -85,8 +85,8 @@ class TestGetFilesystems(unittest.TestCase):
         result = self._run()
         entry = result["/"]
         self.assertTrue(entry["mounted"])
-        self.assertIn("bytesTotal", entry)
-        self.assertIn("pctUsed", entry)
+        self.assertIn("bytes_total", entry)
+        self.assertIn("pct_used", entry)
         self.assertIn("f_blocks", entry)
 
     def test_mounted_entry_config_fields(self):
@@ -111,7 +111,7 @@ class TestGetFilesystems(unittest.TestCase):
 
         entry = result["/wpars/wpar01/home"]
         self.assertFalse(entry["mounted"])
-        self.assertNotIn("bytesTotal", entry)
+        self.assertNotIn("bytes_total", entry)
 
     def test_unmounted_entry_retains_config_fields(self):
         def statvfs_side(path):
@@ -140,12 +140,14 @@ class TestGetFilesystems(unittest.TestCase):
     def test_bytes_calculated_with_frsize(self):
         st = _make_statvfs(f_frsize=4096, f_bsize=8192, f_blocks=1000)
         result = self._run(statvfs_side_effect=st)
-        self.assertEqual(result["/"]["bytesTotal"], 4096 * 1000)
+        self.assertEqual(result["/"]["bytes_total"], 4096 * 1000)
+        self.assertNotEqual(result["/"]["bytes_total"], 8192 * 1000)
 
     def test_pct_used_calculation(self):
+        # 750/1000 blocks used → 75.0%
         st = _make_statvfs(f_blocks=1000, f_bfree=250, f_bavail=200)
         result = self._run(statvfs_side_effect=st)
-        self.assertAlmostEqual(result["/"]["pctUsed"], 75.0)
+        self.assertEqual(result["/"]["pct_used"], 75.0)
 
     def test_zero_f_blocks_no_pct_keys(self):
         # A mounted filesystem with f_blocks=0 should still be mounted=True
@@ -154,8 +156,8 @@ class TestGetFilesystems(unittest.TestCase):
         result = self._run(statvfs_side_effect=st)
         entry = result["/"]
         self.assertTrue(entry["mounted"])
-        self.assertNotIn("pctUsed", entry)
-        self.assertNotIn("bytesTotal", entry)
+        self.assertNotIn("pct_used", entry)
+        self.assertNotIn("bytes_total", entry)
 
     def test_mountpoint_key_in_entry(self):
         result = self._run()

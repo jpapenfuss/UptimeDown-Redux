@@ -173,12 +173,12 @@ class TestGetDisks(unittest.TestCase):
         lib.perfstat_disk.side_effect = side
         with patch("time.time", return_value=1.0):
             result = get_disks(lib)
-        if "hdisk0" in result:
-            entry = result["hdisk0"]
-            self.assertIn("size_mb", entry)
-            self.assertIn("free_mb", entry)
-            self.assertNotIn("size", entry)
-            self.assertNotIn("free", entry)
+        self.assertIn("hdisk0", result)
+        entry = result["hdisk0"]
+        self.assertIn("size_mb", entry)
+        self.assertIn("free_mb", entry)
+        self.assertNotIn("size", entry)
+        self.assertNotIn("free", entry)
 
     def test_enumeration_failure_returns_empty(self):
         lib = MagicMock()

@@ -24,7 +24,7 @@ changes before modifying the database code.
 - **Gatherer output keys match schema column names.** Normalization is done
   inside each gatherer module, not in the storage layer. The only exceptions are
   AIX-only and Linux-only fields (which are simply absent/NULL on the other
-  platform) and the Linux disk table (see `disk_devices_linux` note below).
+  platform) and the Linux disk table (`disk_devices_linux` vs `disk_devices`).
 - **All column names are snake_case.** Gatherer dicts must use snake_case keys
   at output time (e.g. `bytes_total`, `pct_used`, `mem_total`). camelCase keys
   are never stored.
@@ -147,8 +147,8 @@ CREATE INDEX IF NOT EXISTS idx_cpu_stats_host_time
 ### `disk_total`
 
 Aggregate I/O stats across all disks. One row per collection run.
-AIX source: `perfstat_disk_total_t`. Linux: to be added when linux_disk.py is
-complete.
+AIX-only. Source: `perfstat_disk_total_t`. Linux has no equivalent — Linux disk
+data is per-device only (see `disk_devices_linux`).
 
 ```sql
 CREATE TABLE IF NOT EXISTS disk_total (
@@ -189,7 +189,7 @@ CREATE INDEX IF NOT EXISTS idx_disk_total_host_time
 ### `disk_devices`
 
 Per-disk stats. One row per disk per collection run.
-AIX source: `perfstat_disk_t`. Linux: `/proc/diskstats` (future).
+AIX-only. Source: `perfstat_disk_t`. Linux uses a separate table — see `disk_devices_linux`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS disk_devices (
@@ -238,11 +238,68 @@ CREATE INDEX IF NOT EXISTS idx_disk_devices_host_name
     ON disk_devices (host_id, name, collected_at);
 ```
 
-> **Linux disk note:** Linux `/proc/diskstats` exposes sector-level I/O counters
-> (`read_ios`, `read_sectors`, `write_ios`, `write_sectors`, `read_ticks`, etc.)
-> with no capacity or service-time fields — structurally incompatible with the
-> AIX perfstat columns above. Linux disk data will go in a separate
-> `disk_devices_linux` table (to be added when `linux_disk.py` is complete).
+---
+
+### `disk_devices_linux`
+
+Per-device I/O counters from `/proc/diskstats`. One row per device per
+collection run. Linux-only.
+
+All counter fields are cumulative since boot. Sector counts use the kernel's
+logical sector size (512 bytes on most hardware, regardless of physical sector
+size). Tick counts are in milliseconds.
+
+`major`/`minor` are the kernel device numbers. `discard_*` and `flush_*` fields
+are zero on kernels < 4.18 and 5.5 respectively — store them as-is; NULL would
+be misleading since the counter is genuinely zero rather than absent.
+
+Device naming conventions seen in the wild: `sda`/`sdb` (SCSI/SATA),
+`nvme0n1`/`nvme0n1p1` (NVMe), `zd0`/`zd16` (ZFS zvols), `md0` (software RAID),
+`dm-0` (device mapper / LVM).
+
+```sql
+CREATE TABLE IF NOT EXISTS disk_devices_linux (
+    id                  INTEGER PRIMARY KEY,
+    host_id             INTEGER NOT NULL REFERENCES hosts(id),
+    collected_at        REAL    NOT NULL,
+
+    name                TEXT    NOT NULL,   -- device name (e.g. 'sda', 'nvme0n1', 'zd0')
+    major               INTEGER NOT NULL,   -- kernel major device number
+    minor               INTEGER NOT NULL,   -- kernel minor device number
+
+    -- Read counters
+    read_ios            INTEGER,    -- completed read I/Os
+    read_merge          INTEGER,    -- adjacent reads merged by I/O scheduler
+    read_sectors        INTEGER,    -- sectors read (512 bytes each)
+    read_ticks          INTEGER,    -- time spent reading (ms)
+
+    -- Write counters
+    write_ios           INTEGER,    -- completed write I/Os
+    write_merges        INTEGER,    -- adjacent writes merged by I/O scheduler
+    write_sectors       INTEGER,    -- sectors written (512 bytes each)
+    write_ticks         INTEGER,    -- time spent writing (ms)
+
+    -- Queue / latency
+    in_flight           INTEGER,    -- I/Os currently in flight
+    total_io_ticks      INTEGER,    -- time this device had I/O in flight (ms)
+    total_time_in_queue INTEGER,    -- weighted time waiting in queue (ms)
+
+    -- Discard counters (kernel >= 4.18, zero on older kernels)
+    discard_ios         INTEGER,    -- completed discard I/Os
+    discard_merges      INTEGER,    -- discards merged
+    discard_sectors     INTEGER,    -- sectors discarded
+    discard_ticks       INTEGER,    -- time spent on discards (ms)
+
+    -- Flush counters (kernel >= 5.5, zero on older kernels)
+    flush_ios           INTEGER,    -- completed flush I/Os
+    flush_ticks         INTEGER     -- time spent on flushes (ms)
+);
+
+CREATE INDEX IF NOT EXISTS idx_disk_devices_linux_host_time
+    ON disk_devices_linux (host_id, collected_at);
+CREATE INDEX IF NOT EXISTS idx_disk_devices_linux_host_name
+    ON disk_devices_linux (host_id, name, collected_at);
+```
 
 ---
 
@@ -461,6 +518,16 @@ FROM disk_total a
 JOIN disk_total b ON b.host_id = a.host_id
     AND b.id = (SELECT MIN(id) FROM disk_total WHERE id > a.id AND host_id = a.host_id)
 WHERE a.host_id = 1;
+
+-- Linux disk read IOPS between two samples
+SELECT
+    (b.read_ios - a.read_ios) / (b.collected_at - a.collected_at) AS read_iops,
+    (b.write_ios - a.write_ios) / (b.collected_at - a.collected_at) AS write_iops
+FROM disk_devices_linux a
+JOIN disk_devices_linux b ON b.host_id = a.host_id AND b.name = a.name
+    AND b.id = (SELECT MIN(id) FROM disk_devices_linux WHERE id > a.id AND host_id = a.host_id AND name = a.name)
+WHERE a.host_id = 1 AND a.name = 'sda'
+ORDER BY a.collected_at DESC LIMIT 10;
 
 -- Network throughput (bytes/sec) on a given interface between two samples
 SELECT

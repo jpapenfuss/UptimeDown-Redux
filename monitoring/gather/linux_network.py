@@ -17,6 +17,7 @@ import logging
 import time
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # Field names for /proc/net/dev counters, in column order.
 # The interface name is stripped before zipping, so it is not listed here.
@@ -50,6 +51,7 @@ class Network:
         integer counters mapped by NET_DEV_KEYS, plus a '_time' timestamp.
         Returns False if /proc/net/dev is unreadable.
         """
+        logger.debug("get_interfaces: reading %s", self.proc_net_dev_path)
         if util.caniread(self.proc_net_dev_path) is False:
             logger.error("Fatal: Can't open %s for reading.", self.proc_net_dev_path)
             return False
@@ -74,6 +76,13 @@ class Network:
                 interfaces[iface] = dict(zip(NET_DEV_KEYS, map(int, fields)))
                 interfaces[iface]["_time"] = ts
                 line = reader.readline()
+        logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
+        for iface, stats in interfaces.items():
+            logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d idrop=%d odrop=%d",
+                         iface,
+                         stats["ibytes"], stats["obytes"],
+                         stats["ierrors"], stats["oerrors"],
+                         stats["idrop"], stats["odrop"])
         return interfaces
 
     def __init__(self):

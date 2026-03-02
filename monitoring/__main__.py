@@ -64,6 +64,7 @@ def main():
     elif _PLATFORM == "linux":
         timebeforecpu = time.time()
         mycpu    = linux_cpu.Cpu()
+        mydisk   = linux_disk.Disk()
         mymemory = linux_memory.Memory()
         myfs     = linux_filesystems.Filesystems()
         mynet    = linux_network.Network()
@@ -73,6 +74,7 @@ def main():
         jsonout = json.dumps({
             "cpustats":    mycpu.cpustat_values,
             "cpuinfo":     mycpu.cpuinfo_values,
+            "disks":       mydisk.blockdevices,
             "memory":      mymemory.stats,
             "filesystems": myfs.filesystems,
             "network":     mynet.interfaces,

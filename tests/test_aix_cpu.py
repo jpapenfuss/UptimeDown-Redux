@@ -132,9 +132,10 @@ class TestAixCpu(unittest.TestCase):
         self.assertEqual(obj.cpustat_values["user_ticks"], 999)
 
     def test_update_values_called_on_init(self):
-        import inspect
-        src = inspect.getsource(AixCpu.__init__)
-        self.assertIn("UpdateValues", src)
+        with patch.object(AixCpu, "UpdateValues") as mock_update:
+            obj = AixCpu.__new__(AixCpu)
+            obj.__init__()
+        mock_update.assert_called_once()
 
 
 if __name__ == "__main__":

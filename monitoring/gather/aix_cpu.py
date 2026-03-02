@@ -13,6 +13,7 @@ import time
 import logging
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
 IDENTIFIER_LENGTH = 64
@@ -152,6 +153,7 @@ def get_cpu_total():
     The 'loadavg' array is unpacked to a plain Python list.
     Returns False and logs an error if the call does not return exactly 1.
     """
+    logger.debug("get_cpu_total: calling perfstat_cpu_total")
     lib = _load_libperfstat()
 
     lib.perfstat_cpu_total.argtypes = [
@@ -199,6 +201,33 @@ def get_cpu_total():
     result["loadavg_15"]    = la[2]
 
     result["_time"] = time.time()
+
+    logger.debug("get_cpu_total: description=%r ncpus=%d processor_hz=%d",
+                 result.get("description"), result.get("ncpus"), result.get("processor_hz"))
+    logger.debug("get_cpu_total: user_ticks=%d sys_ticks=%d idle_ticks=%d iowait_ticks=%d",
+                 result.get("user_ticks", 0), result.get("sys_ticks", 0),
+                 result.get("idle_ticks", 0), result.get("iowait_ticks", 0))
+    # loadavg values from perfstat are fixed-point: divide by 2^SBITS (65536) for
+    # a human-readable load average. Log both raw and scaled values.
+    SBITS = 16
+    logger.debug("get_cpu_total: loadavg_1=%.2f loadavg_5=%.2f loadavg_15=%.2f "
+                 "(raw: %d %d %d)",
+                 result.get("loadavg_1", 0) / (1 << SBITS),
+                 result.get("loadavg_5", 0) / (1 << SBITS),
+                 result.get("loadavg_15", 0) / (1 << SBITS),
+                 result.get("loadavg_1", 0),
+                 result.get("loadavg_5", 0),
+                 result.get("loadavg_15", 0))
+    logger.debug("get_cpu_total: syscall=%d pswitch=%d sysfork=%d sysexec=%d",
+                 result.get("syscall", 0), result.get("pswitch", 0),
+                 result.get("sysfork", 0), result.get("sysexec", 0))
+    total_donated = (result.get("idle_donated_purr", 0) + result.get("busy_donated_purr", 0))
+    total_stolen  = (result.get("idle_stolen_purr",  0) + result.get("busy_stolen_purr",  0))
+    logger.debug("get_cpu_total: PURR donated=%d stolen=%d (idle_donated=%d busy_donated=%d "
+                 "idle_stolen=%d busy_stolen=%d)",
+                 total_donated, total_stolen,
+                 result.get("idle_donated_purr", 0), result.get("busy_donated_purr", 0),
+                 result.get("idle_stolen_purr",  0), result.get("busy_stolen_purr",  0))
     return result
 
 
@@ -214,9 +243,12 @@ class AixCpu:
 
     def UpdateValues(self):
         """Refresh cpustat_values by calling perfstat_cpu_total() again."""
+        logger.debug("AixCpu.UpdateValues: starting")
         self.cpustat_values = get_cpu_total()
+        logger.debug("AixCpu.UpdateValues: complete (ok=%s)", self.cpustat_values is not False)
 
     def __init__(self):
+        logger.debug("AixCpu: initializing")
         self.UpdateValues()
 
 

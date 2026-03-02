@@ -16,6 +16,7 @@ import os
 import time
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 
 class AixFilesystems:
@@ -48,6 +49,7 @@ class AixFilesystems:
         Returns a dict keyed by mountpoint. All configured filesystems are
         included. The 'mounted' key distinguishes live entries from config-only.
         """
+        logger.debug("get_filesystems: reading /etc/filesystems")
         etc_fs_path = "/etc/filesystems"
         if not os.access(etc_fs_path, os.R_OK):
             logger.error("Can't read %s", etc_fs_path)
@@ -69,8 +71,12 @@ class AixFilesystems:
                     key, _, val = line.partition("=")
                     config[current_stanza][key.strip()] = val.strip()
 
+        logger.debug("get_filesystems: parsed %d stanzas from /etc/filesystems", len(config))
+
         # Attempt statvfs on each configured mountpoint.
         filesystems = {}
+        nmounted = 0
+        nunmounted = 0
         for mountpoint, attrs in config.items():
             entry = {
                 "mountpoint": mountpoint,
@@ -94,23 +100,40 @@ class AixFilesystems:
                 entry["f_ffree"]  = st.f_ffree
                 entry["f_favail"] = st.f_favail
                 if st.f_blocks > 0:
-                    entry["bytesTotal"]     = st.f_frsize * st.f_blocks
-                    entry["bytesFree"]      = st.f_frsize * st.f_bfree
-                    entry["bytesAvailable"] = st.f_frsize * st.f_bavail
-                    entry["pctFree"]        = int((st.f_bfree  / st.f_blocks) * 1000000) / 10000
-                    entry["pctAvailable"]   = int((st.f_bavail / st.f_blocks) * 1000000) / 10000
-                    entry["pctUsed"]        = int((1.0 - st.f_bfree  / st.f_blocks) * 1000000) / 10000
-                    entry["pctReserved"]    = int((1.0 - st.f_bavail / st.f_blocks) * 1000000) / 10000
+                    entry["bytes_total"]     = st.f_frsize * st.f_blocks
+                    entry["bytes_free"]      = st.f_frsize * st.f_bfree
+                    entry["bytes_available"] = st.f_frsize * st.f_bavail
+                    entry["pct_free"]        = int((st.f_bfree  / st.f_blocks) * 1000000) / 10000
+                    entry["pct_available"]   = int((st.f_bavail / st.f_blocks) * 1000000) / 10000
+                    entry["pct_used"]        = int((1.0 - st.f_bfree  / st.f_blocks) * 1000000) / 10000
+                    entry["pct_reserved"]    = int((1.0 - st.f_bavail / st.f_blocks) * 1000000) / 10000
+                    logger.debug("get_filesystems:   mounted  %s (%s, %s) %.1f%% used",
+                                 mountpoint, entry["dev"], entry["vfs"],
+                                 entry["pct_used"])
+                else:
+                    logger.debug("get_filesystems:   mounted  %s (%s, %s) no block storage",
+                                 mountpoint, entry["dev"], entry["vfs"])
+                nmounted += 1
             except OSError:
                 entry["mounted"] = False
+                logger.debug("get_filesystems:   unmounted %s (%s, %s)",
+                             mountpoint, entry["dev"], entry["vfs"])
+                nunmounted += 1
 
             filesystems[mountpoint] = entry
 
         filesystems["_time"] = time.time()
+        logger.debug("get_filesystems: total=%d mounted=%d unmounted=%d",
+                     len(config), nmounted, nunmounted)
         return filesystems
 
     def __init__(self):
+        logger.debug("AixFilesystems: initializing")
         self.filesystems = self.get_filesystems()
+        nmounted = sum(1 for v in self.filesystems.values()
+                       if isinstance(v, dict) and v.get("mounted"))
+        logger.debug("AixFilesystems: initialized (%d total, %d mounted)",
+                     len(self.filesystems) - 1, nmounted)
 
 
 if __name__ == "__main__":
