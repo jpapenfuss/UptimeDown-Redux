@@ -253,8 +253,9 @@ def get_disks(lib):
         ctypes.sizeof(perfstat_disk_t),
         ndisks,
     )
-    if ret < 0:
-        logger.error("perfstat_disk enumeration returned %d", ret)
+    if ret != ndisks:
+        logger.error("perfstat_disk enumeration returned %d, expected %d (count mismatch)",
+                     ret, ndisks)
         return {}
 
     disks = {}

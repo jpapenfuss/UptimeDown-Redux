@@ -124,8 +124,9 @@ def get_interfaces():
         ctypes.sizeof(perfstat_netinterface_t),
         nifaces,
     )
-    if ret < 0:
-        logger.error("perfstat_netinterface enumeration returned %d", ret)
+    if ret != nifaces:
+        logger.error("perfstat_netinterface enumeration returned %d, expected %d (count mismatch)",
+                     ret, nifaces)
         return {}
 
     interfaces = {}
