@@ -19,6 +19,7 @@ import time
 import logging
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # AIX uses 4 KB pages throughout libperfstat.
 PAGE_SIZE = 4096
@@ -79,6 +80,7 @@ def get_memory_total():
 
     Returns False and logs an error if the perfstat call fails.
     """
+    logger.debug("get_memory_total: calling perfstat_memory_total")
     try:
         lib = ctypes.CDLL("libperfstat.a(shr_64.o)")
     except OSError as e:
@@ -131,6 +133,17 @@ def get_memory_total():
 
         "_time": time.time(),
     }
+
+    gb = 1024 ** 3
+    logger.debug("get_memory_total: mem_total=%.2f GB mem_free=%.2f GB mem_cached=%.2f GB",
+                 result["mem_total"] / gb, result["mem_free"] / gb, result["mem_cached"] / gb)
+    logger.debug("get_memory_total: real_inuse=%.2f GB real_pinned=%.2f GB virt_total=%.2f GB",
+                 result["real_inuse"] / gb, result["real_pinned"] / gb, result["virt_total"] / gb)
+    logger.debug("get_memory_total: swap_total=%.2f GB swap_free=%.2f GB pgsp_rsvd=%.2f GB",
+                 result["swap_total"] / gb, result["swap_free"] / gb, result["pgsp_rsvd"] / gb)
+    logger.debug("get_memory_total: pgexct=%d pgins=%d pgouts=%d pgspins=%d pgspouts=%d pgsteals=%d",
+                 result["pgexct"], result["pgins"], result["pgouts"],
+                 result["pgspins"], result["pgspouts"], result["pgsteals"])
     return result
 
 
@@ -146,12 +159,16 @@ class AixMemory:
 
     def UpdateValues(self):
         """Refresh stats by calling perfstat_memory_total() again."""
+        logger.debug("AixMemory.UpdateValues: starting")
         self.stats = {
             "memory": get_memory_total(),
             "slabs":  None,
         }
+        logger.debug("AixMemory.UpdateValues: complete (ok=%s)",
+                     self.stats["memory"] is not False)
 
     def __init__(self):
+        logger.debug("AixMemory: initializing")
         self.UpdateValues()
 
 

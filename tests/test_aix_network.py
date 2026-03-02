@@ -145,9 +145,11 @@ class TestAixNetwork(unittest.TestCase):
         self.assertEqual(obj.interfaces, new_data)
 
     def test_update_values_called_on_init(self):
-        import inspect
-        src = inspect.getsource(AixNetwork.__init__)
-        self.assertIn("UpdateValues", src)
+        with patch("aix_network.get_interfaces", return_value={}) as mock_get:
+            obj = AixNetwork()
+        # UpdateValues is the only code path that calls get_interfaces;
+        # if it was called, UpdateValues was called from __init__.
+        mock_get.assert_called_once()
 
 
 if __name__ == "__main__":

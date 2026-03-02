@@ -55,18 +55,31 @@ class TestGetMeminfo(unittest.TestCase):
 
     def test_kb_converted_to_bytes(self):
         result = self._run()
-        self.assertEqual(result["MemTotal"], 16384000 * 1024)
-        self.assertEqual(result["MemFree"], 8192000 * 1024)
+        self.assertEqual(result["mem_total"], 16384000 * 1024)
+        self.assertEqual(result["mem_free"], 8192000 * 1024)
 
     def test_field_without_unit_stored_as_int(self):
         result = self._run()
-        self.assertEqual(result["HugePages_Total"], 0)
-        self.assertEqual(result["HugePages_Free"], 0)
+        self.assertEqual(result["huge_pages_total"], 0)
+        self.assertEqual(result["huge_pages_free"], 0)
 
     def test_multiple_fields_present(self):
         result = self._run()
-        for key in ("MemTotal", "MemFree", "Cached", "SwapTotal", "SwapFree"):
+        for key in ("mem_total", "mem_free", "cached", "swap_total", "swap_free"):
             self.assertIn(key, result)
+
+    def test_keys_are_snake_case(self):
+        result = self._run()
+        for key in result:
+            if key == "_time":
+                continue
+            self.assertFalse(any(c.isupper() for c in key),
+                             f"Non-snake_case key in output: {key!r}")
+
+    def test_original_keys_absent(self):
+        result = self._run()
+        for key in ("MemTotal", "MemFree", "HugePages_Total", "SwapTotal"):
+            self.assertNotIn(key, result)
 
     def test_raises_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
@@ -134,7 +147,7 @@ class TestMemoryInit(unittest.TestCase):
 
     def test_stats_has_memory_and_slabs_keys(self):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)
-        fake_memory = {"_time": 1.0, "MemTotal": 1024}
+        fake_memory = {"_time": 1.0, "mem_total": 1024}
         fake_slabs = {"_time": 1.0, "kmalloc-64": {"active_objs": 10}}
         mem.GetMeminfo = MagicMock(return_value=fake_memory)
         mem.GetSlabinfo = MagicMock(return_value=fake_slabs)

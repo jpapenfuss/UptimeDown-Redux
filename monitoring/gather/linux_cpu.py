@@ -10,6 +10,7 @@ import time
 import logging
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 
 class Cpu:
@@ -56,6 +57,7 @@ class Cpu:
         FLOAT_STATS, and LIST_STATS. Unknown fields are kept as strings.
         Returns False if /proc/cpuinfo is unreadable.
         """
+        logger.debug("GetCpuinfo: reading /proc/cpuinfo")
         cpuinfo_values = {}
         cpuinfo_path = "/proc/cpuinfo"
         if util.caniread(cpuinfo_path) is False:
@@ -83,6 +85,13 @@ class Cpu:
                     cpuinfo_values[split[0]] = split[1]
                 cpuinfo_line = str(reader.readline()).strip()
         cpuinfo_values["_time"] = time.time()
+        logger.debug("GetCpuinfo: parsed %d fields for cpu0", len(cpuinfo_values) - 1)
+        logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
+                     cpuinfo_values.get("model name", "unknown"),
+                     cpuinfo_values.get("cpu MHz", "?"),
+                     cpuinfo_values.get("bogomips", "?"),
+                     len(cpuinfo_values.get("flags", [])),
+                     len(cpuinfo_values.get("bugs", [])))
         return cpuinfo_values
 
     def GetCpuSoftIrqs(self, cpustats_values):
@@ -95,7 +104,7 @@ class Cpu:
         The softirq counts are stored under cpustats_values[cpuN]["softirqs"][irqname].
         Returns the updated cpustats_values dict, or False if the file is unreadable.
         """
-        logger.debug("Entering GetCpuSoftIrqs")
+        logger.debug("GetCpuSoftIrqs: reading /proc/softirqs")
         softirq_path = "/proc/softirqs"
         if util.caniread(softirq_path) is False:
             logger.error(f"Fatal: Can't open {softirq_path} for reading.")
@@ -113,6 +122,8 @@ class Cpu:
                     if cpu_name in cpustats_values and cpu_name != "cpu":
                         cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
                 softirq_line = str(reader.readline()).strip()
+        logger.debug("GetCpuSoftIrqs: merged softirqs for %d CPUs",
+                     sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu"))
         return cpustats_values
 
     def GetCpuProcStats(self):
@@ -127,6 +138,7 @@ class Cpu:
         coerced to int or float where known.
         Returns False if /proc/stat is unreadable.
         """
+        logger.debug("GetCpuProcStats: reading /proc/stat")
         cpustats_values = {}
         cpustats_labels = ["user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"]
         stat_path = "/proc/stat"
@@ -180,15 +192,31 @@ class Cpu:
         cpustats_values["steal_ticks"]    = agg.get("steal")
         cpustats_values["guest_ticks"]    = agg.get("guest")
 
+        ncores = sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu")
+        logger.debug("GetCpuProcStats: parsed aggregate + %d per-core CPU rows", ncores)
+        logger.debug("GetCpuProcStats: user=%s nice=%s sys=%s idle=%s iowait=%s steal=%s",
+                     cpustats_values.get("user_ticks"),
+                     cpustats_values.get("nice_ticks"),
+                     cpustats_values.get("sys_ticks"),
+                     cpustats_values.get("idle_ticks"),
+                     cpustats_values.get("iowait_ticks"),
+                     cpustats_values.get("steal_ticks"))
+        logger.debug("GetCpuProcStats: procs_running=%s procs_blocked=%s ctxt=%s",
+                     cpustats_values.get("procs_running"),
+                     cpustats_values.get("procs_blocked"),
+                     cpustats_values.get("ctxt"))
         return cpustats_values
 
     def UpdateValues(self):
         """Refresh both cpuinfo_values and cpustat_values from /proc."""
+        logger.debug("Cpu.UpdateValues: starting")
         self.cpuinfo_values = self.GetCpuinfo()
         self.cpustat_values = self.GetCpuProcStats()
+        logger.debug("Cpu.UpdateValues: complete")
 
     def __init__(self):
         # Populate both attributes immediately on instantiation.
+        logger.debug("Cpu: initializing")
         self.UpdateValues()
 
 

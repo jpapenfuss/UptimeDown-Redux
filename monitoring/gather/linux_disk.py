@@ -16,6 +16,7 @@ import os
 import time
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # Device name prefixes to skip entirely — these are not physical storage.
 #   loop  = loopback devices
@@ -92,6 +93,7 @@ class Disk:
         IGNORE_PREFIXES are skipped.
         Returns None if /proc/diskstats is unreadable.
         """
+        logger.debug("get_devices: reading %s", self.proc_diskstats_path)
         diskstats = {}
         if util.caniread(self.proc_diskstats_path) is False:
             logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
@@ -112,6 +114,12 @@ class Disk:
                 }
                 diskstats[diskname]["_time"] = time.time()
                 diskstats_line = str(reader.readline()).strip().split()
+        logger.debug("get_devices: found %d block devices", len(diskstats))
+        for devname, entry in diskstats.items():
+            s = entry["iostats"]
+            logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d",
+                         devname, s["major"], s["minor"],
+                         s["read_ios"], s["write_ios"], s["in_flight"])
         return diskstats
 
     def get_sys_stats(self, devnum):
@@ -139,8 +147,10 @@ class Disk:
         calls get_sys_stats() with its major:minor number to enrich the entry
         with /sys data (currently a no-op stub).
         """
+        logger.debug("get_disks: starting collection")
         devs = self.get_devices()
         if devs is None:
+            logger.error("get_disks: get_devices() returned None, skipping")
             return
         for dev in devs:
             devnum = (
@@ -150,6 +160,7 @@ class Disk:
             )
             self.get_sys_stats(devnum)
         self.blockdevices = devs
+        logger.debug("get_disks: collected stats for %d devices", len(devs))
 
     def __init__(self):
         self.blockdevices = {}

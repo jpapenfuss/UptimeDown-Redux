@@ -13,6 +13,7 @@ import time
 import logging
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
 IDENTIFIER_LENGTH = 64
@@ -170,6 +171,7 @@ def get_disk_total(lib):
     since disk_total is a singleton — there is no enumeration.
     Returns False and logs an error if the call does not return exactly 1.
     """
+    logger.debug("get_disk_total: calling perfstat_disk_total")
     lib.perfstat_disk_total.argtypes = [
         ctypes.POINTER(perfstat_id_t),
         ctypes.POINTER(perfstat_disk_total_t),
@@ -190,6 +192,11 @@ def get_disk_total(lib):
     result["size_mb"] = result.pop("size")      # clarify units (MB)
     result["free_mb"] = result.pop("free")
     result["_time"] = time.time()
+
+    logger.debug("get_disk_total: ndisks=%d size_mb=%d free_mb=%d xfers=%d",
+                 result["ndisks"], result["size_mb"], result["free_mb"], result["xfers"])
+    logger.debug("get_disk_total: rblks=%d wblks=%d xrate=%d",
+                 result["rblks"], result["wblks"], result["xrate"])
     return result
 
 
@@ -207,6 +214,7 @@ def get_disks(lib):
     Returns a dict keyed by disk name (e.g. "hdisk0"), or an empty dict on error.
     All entries share a single '_time' timestamp taken after the call returns.
     """
+    logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
     lib.perfstat_disk.argtypes = [
         ctypes.POINTER(perfstat_id_t),
         ctypes.POINTER(perfstat_disk_t),
@@ -220,6 +228,7 @@ def get_disks(lib):
     if ndisks <= 0:
         logger.error("perfstat_disk count query returned %d", ndisks)
         return {}
+    logger.debug("get_disks: perfstat reports %d disks", ndisks)
 
     DiskArray = perfstat_disk_t * ndisks
     disk_buf = DiskArray()
@@ -247,6 +256,10 @@ def get_disks(lib):
         d["free_mb"] = d.pop("free")
         d["_time"] = ts
         disks[d["name"]] = d
+    logger.debug("get_disks: collected %d disks", len(disks))
+    for dname, d in disks.items():
+        logger.debug("get_disks:   %s size_mb=%d free_mb=%d xfers=%d xrate=%d vgname=%r",
+                     dname, d["size_mb"], d["free_mb"], d["xfers"], d["xrate"], d["vgname"])
     return disks
 
 
@@ -263,9 +276,12 @@ class AixDisk:
     """
 
     def __init__(self):
+        logger.debug("AixDisk: initializing")
         lib = _load_lib()
         self.disk_total = get_disk_total(lib)
         self.blockdevices = get_disks(lib)
+        logger.debug("AixDisk: initialized (disk_total ok=%s, blockdevices=%d)",
+                     self.disk_total is not False, len(self.blockdevices))
 
 
 if __name__ == "__main__":

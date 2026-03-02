@@ -16,6 +16,7 @@ import time
 import logging
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
 IDENTIFIER_LENGTH = 64
@@ -78,6 +79,7 @@ def get_interfaces():
     Output keys are normalized to schema column names:
         ipacets  → ipackets  (corrects the typo in libperfstat.h)
     """
+    logger.debug("get_interfaces: calling perfstat_netinterface (count query + enumeration)")
     try:
         lib = ctypes.CDLL("libperfstat.a(shr_64.o)")
     except OSError as e:
@@ -99,6 +101,7 @@ def get_interfaces():
     if nifaces <= 0:
         logger.error("perfstat_netinterface count query returned %d", nifaces)
         return {}
+    logger.debug("get_interfaces: perfstat reports %d interfaces", nifaces)
 
     IfaceArray = perfstat_netinterface_t * nifaces
     iface_buf = IfaceArray()
@@ -138,6 +141,12 @@ def get_interfaces():
             "_time":        ts,
         }
         interfaces[entry["iface"]] = entry
+    logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
+    for iface, e in interfaces.items():
+        logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
+                     "bitrate=%d if_iqdrops=%d if_arpdrops=%d",
+                     iface, e["ibytes"], e["obytes"], e["ierrors"], e["oerrors"],
+                     e["bitrate"], e["if_iqdrops"], e["if_arpdrops"])
     return interfaces
 
 
@@ -152,9 +161,12 @@ class AixNetwork:
 
     def UpdateValues(self):
         """Refresh interfaces by calling perfstat_netinterface() again."""
+        logger.debug("AixNetwork.UpdateValues: starting")
         self.interfaces = get_interfaces()
+        logger.debug("AixNetwork.UpdateValues: complete (%d interfaces)", len(self.interfaces))
 
     def __init__(self):
+        logger.debug("AixNetwork: initializing")
         self.UpdateValues()
 
 

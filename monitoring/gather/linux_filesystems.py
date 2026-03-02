@@ -16,6 +16,7 @@ import os
 import time
 
 logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 # Filesystem types that carry no real block storage and should be skipped.
 # Add entries here as new virtual fs types are encountered.
@@ -84,13 +85,13 @@ class Filesystems:
         matches the calculation used by the AIX gatherer.
 
         Derived fields added beyond the raw statvfs values:
-            bytesTotal     — total capacity in bytes (f_blocks * f_frsize)
-            bytesFree      — free bytes including reserved root blocks
-            bytesAvailable — free bytes available to unprivileged users
-            pctFree        — percentage free (including reserved)
-            pctAvailable   — percentage available to unprivileged users
-            pctUsed        — percentage consumed (1 - pctFree)
-            pctReserved    — percentage reserved for root (pctFree - pctAvailable)
+            bytes_total     — total capacity in bytes (f_blocks * f_frsize)
+            bytes_free      — free bytes including reserved root blocks
+            bytes_available — free bytes available to unprivileged users
+            pct_free        — percentage free (including reserved)
+            pct_available   — percentage available to unprivileged users
+            pct_used        — percentage consumed (1 - pct_free)
+            pct_reserved    — percentage reserved for root (pct_free - pct_available)
         """
         fs_stats = {
             "f_bsize": statvfs.f_bsize,
@@ -107,14 +108,14 @@ class Filesystems:
         # No blocks means no real storage — caller will skip this mount.
         if fs_stats['f_blocks'] == 0:
             return None
-        fs_stats["bytesTotal"]     = fs_stats["f_frsize"] * fs_stats["f_blocks"]
-        fs_stats["bytesFree"]      = fs_stats["f_frsize"] * fs_stats["f_bfree"]
-        fs_stats["bytesAvailable"] = fs_stats["f_frsize"] * fs_stats["f_bavail"]
+        fs_stats["bytes_total"]     = fs_stats["f_frsize"] * fs_stats["f_blocks"]
+        fs_stats["bytes_free"]      = fs_stats["f_frsize"] * fs_stats["f_bfree"]
+        fs_stats["bytes_available"] = fs_stats["f_frsize"] * fs_stats["f_bavail"]
         try:
-            fs_stats["pctFree"]      = int((fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pctAvailable"] = int((fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pctUsed"]      = int((1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pctReserved"]  = int((1.0 - fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pct_free"]      = int((fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pct_available"] = int((fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pct_used"]      = int((1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pct_reserved"]  = int((1.0 - fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
         except ZeroDivisionError:
             # Should be unreachable: we already excluded f_blocks == 0 above.
             raise RuntimeError(f"ZeroDivisionError on f_blocks for a mount with f_blocks != 0")
@@ -130,6 +131,7 @@ class Filesystems:
 
         Note: duplicate mountpoints overwrite earlier entries (last-write wins).
         """
+        logger.debug("get_filesystems_from_proc: reading %s", proc_mounts_path)
         fs = {}
         with open(proc_mounts_path, "r") as reader:
             mount_line = str(reader.readline()).strip()
@@ -140,6 +142,8 @@ class Filesystems:
                     fs.update(filesystem)
                 mount_line = str(reader.readline()).strip()
         fs["_time"] = time.time()
+        nmounts = len(fs) - 1  # exclude _time
+        logger.debug("get_filesystems_from_proc: collected %d filesystems", nmounts)
         return fs
 
     def process_mount(self, mount):
@@ -162,7 +166,11 @@ class Filesystems:
         Space stats from explode_statvfs() are merged in at the top level
         (no fs_stats sub-dict).
         """
-        if mount[2] in FS_IGNORE or mount[1] in self.fs_reject:
+        if mount[2] in FS_IGNORE:
+            logger.debug("process_mount: skipping %s (fstype %s ignored)", mount[1], mount[2])
+            return {}
+        if mount[1] in self.fs_reject:
+            logger.debug("process_mount: skipping %s (previously rejected)", mount[1])
             return {}
         try:
             fs_stats = self.explode_statvfs(os.statvfs(mount[1]))
@@ -171,6 +179,7 @@ class Filesystems:
             return {}
         if fs_stats is None:
             # No block storage — remember this path to skip it next time.
+            logger.debug("process_mount: %s has no block storage, adding to reject list", mount[1])
             self.fs_reject.append(mount[1])
             return {}
         entry = {
@@ -181,6 +190,8 @@ class Filesystems:
             "mounted":    True,
         }
         entry.update(fs_stats)
+        logger.debug("process_mount: collected %s (%s, %s, %.1f%% used)",
+                     mount[1], mount[0], mount[2], fs_stats["pct_used"])
         return {mount[1]: entry}
 
     def __init__(self):

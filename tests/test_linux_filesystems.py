@@ -56,51 +56,75 @@ class TestExplodeStatvfs(unittest.TestCase):
             self.assertIn(field, result)
 
     def test_uses_frsize_for_bytes_total(self):
-        # f_frsize=4096, f_bsize=8192 — must use f_frsize
+        # f_frsize=4096, f_bsize=8192 — must use f_frsize, not f_bsize
         st = _make_statvfs(f_frsize=4096, f_bsize=8192, f_blocks=1000)
         result = self._fs().explode_statvfs(st)
-        self.assertEqual(result["bytesTotal"], 4096 * 1000)
+        self.assertEqual(result["bytes_total"], 4096 * 1000)
+        # Confirm f_bsize was NOT used
+        self.assertNotEqual(result["bytes_total"], 8192 * 1000)
 
     def test_bytes_free_uses_frsize(self):
         st = _make_statvfs(f_frsize=4096, f_bsize=8192, f_bfree=500)
         result = self._fs().explode_statvfs(st)
-        self.assertEqual(result["bytesFree"], 4096 * 500)
+        self.assertEqual(result["bytes_free"], 4096 * 500)
 
     def test_bytes_available_uses_frsize(self):
         st = _make_statvfs(f_frsize=4096, f_bsize=8192, f_bavail=450)
         result = self._fs().explode_statvfs(st)
-        self.assertEqual(result["bytesAvailable"], 4096 * 450)
+        self.assertEqual(result["bytes_available"], 4096 * 450)
 
     def test_pct_used_calculation(self):
+        # 750/1000 blocks used → 75.0%
         st = _make_statvfs(f_blocks=1000, f_bfree=250, f_bavail=200)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctUsed"], 75.0)
+        self.assertEqual(result["pct_used"], 75.0)
 
     def test_pct_free_calculation(self):
+        # 250/1000 blocks free → 25.0%
         st = _make_statvfs(f_blocks=1000, f_bfree=250)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctFree"], 25.0)
+        self.assertEqual(result["pct_free"], 25.0)
 
     def test_pct_available_calculation(self):
+        # 200/1000 blocks available → 20.0%
         st = _make_statvfs(f_blocks=1000, f_bavail=200)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctAvailable"], 20.0)
+        self.assertEqual(result["pct_available"], 20.0)
 
     def test_pct_reserved_calculation(self):
-        # reserved = pctFree - pctAvailable  (blocks free to root but not users)
+        # reserved = 1 - bavail/blocks; 800/1000 → 80.0%
+        # (different from pct_used which is 1 - bfree/blocks)
         st = _make_statvfs(f_blocks=1000, f_bfree=250, f_bavail=200)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctReserved"], (1.0 - 200/1000) * 100)
+        self.assertEqual(result["pct_reserved"], 80.0)
+        # pct_reserved must differ from pct_used when there are reserved blocks
+        self.assertNotEqual(result["pct_reserved"], result["pct_used"])
+
+    def test_pct_truncated_not_rounded(self):
+        # 1/3 * 100 = 33.3333...% — must truncate to 4 decimal places: 33.3333
+        # If rounding were used, 33.33335 would round to 33.3334.
+        # Use 2/3 used (1 free out of 3): (1 - 1/3) * 100 = 66.6666...
+        # Truncated: 66.6666. Rounded to 4dp: 66.6667. Confirms truncation.
+        st = _make_statvfs(f_blocks=3, f_bfree=1, f_bavail=1)
+        result = self._fs().explode_statvfs(st)
+        self.assertEqual(result["pct_used"], 66.6666)
 
     def test_full_disk_pct_used_100(self):
         st = _make_statvfs(f_blocks=1000, f_bfree=0, f_bavail=0)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctUsed"], 100.0)
+        self.assertEqual(result["pct_used"], 100.0)
 
     def test_empty_disk_pct_used_zero(self):
         st = _make_statvfs(f_blocks=1000, f_bfree=1000, f_bavail=1000)
         result = self._fs().explode_statvfs(st)
-        self.assertAlmostEqual(result["pctUsed"], 0.0)
+        self.assertEqual(result["pct_used"], 0.0)
+
+    def test_no_camelcase_keys(self):
+        st = _make_statvfs()
+        result = self._fs().explode_statvfs(st)
+        for key in result:
+            self.assertFalse(any(c.isupper() for c in key),
+                             f"camelCase key leaked into output: {key!r}")
 
 
 class TestProcessMount(unittest.TestCase):
@@ -137,8 +161,8 @@ class TestProcessMount(unittest.TestCase):
         with patch("os.statvfs", return_value=st):
             result = self._fs().process_mount(self._mount_line())
         entry = result["/mnt"]
-        self.assertIn("bytesTotal", entry)
-        self.assertIn("pctUsed", entry)
+        self.assertIn("bytes_total", entry)
+        self.assertIn("pct_used", entry)
         self.assertIn("f_blocks", entry)
 
     def test_ignored_fstype_returns_empty(self):
@@ -238,6 +262,19 @@ class TestGetFilesystemsFromProc(unittest.TestCase):
         self.assertNotIn("/sys", result)
         self.assertNotIn("/proc", result)
         self.assertNotIn("/run", result)
+
+    def test_space_values_correct_end_to_end(self):
+        # Drive a known statvfs through the full parse path and verify
+        # bytes_total and pct_used are computed correctly end-to-end.
+        st = _make_statvfs(f_frsize=4096, f_blocks=1000, f_bfree=250, f_bavail=200)
+        fs = Filesystems.__new__(Filesystems)
+        fs.fs_reject = []
+        with patch("builtins.open", lambda *a, **kw: io.StringIO(PROC_MOUNTS_SAMPLE)), \
+             patch("os.statvfs", return_value=st), \
+             patch("time.time", return_value=1.0):
+            result = fs.get_filesystems_from_proc("/proc/mounts")
+        self.assertEqual(result["/"]["bytes_total"], 4096 * 1000)
+        self.assertEqual(result["/"]["pct_used"], 75.0)
 
 
 if __name__ == "__main__":

@@ -132,9 +132,10 @@ class TestAixMemory(unittest.TestCase):
         self.assertIsNone(obj.stats["slabs"])
 
     def test_update_values_called_on_init(self):
-        import inspect
-        src = inspect.getsource(AixMemory.__init__)
-        self.assertIn("UpdateValues", src)
+        with patch.object(AixMemory, "UpdateValues") as mock_update:
+            obj = AixMemory.__new__(AixMemory)
+            obj.__init__()
+        mock_update.assert_called_once()
 
 
 if __name__ == "__main__":

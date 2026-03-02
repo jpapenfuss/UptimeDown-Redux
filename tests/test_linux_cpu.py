@@ -91,11 +91,12 @@ class TestGetCpuinfo(unittest.TestCase):
     def test_float_field_coerced(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
         self.assertIsInstance(result["cpu MHz"], float)
-        self.assertAlmostEqual(result["cpu MHz"], 2400.0)
+        self.assertEqual(result["cpu MHz"], 2400.0)
 
     def test_float_bogomips(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
         self.assertIsInstance(result["bogomips"], float)
+        self.assertEqual(result["bogomips"], 4800.0)
 
     def test_list_field_flags(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
@@ -195,6 +196,21 @@ class TestGetCpuProcStats(unittest.TestCase):
         self.assertEqual(result["steal_ticks"], 2)
         self.assertEqual(result["guest_ticks"], 1)
 
+    def test_normalized_keys_match_aggregate_cpu_subdict(self):
+        # user_ticks must equal cpu["user"], sys_ticks must equal cpu["system"], etc.
+        # Catches any copy-paste error in the normalization mapping.
+        result = self._make_stats()
+        agg = result["cpu"]
+        self.assertEqual(result["user_ticks"],    agg["user"])
+        self.assertEqual(result["nice_ticks"],    agg["nice"])
+        self.assertEqual(result["sys_ticks"],     agg["system"])
+        self.assertEqual(result["idle_ticks"],    agg["idle"])
+        self.assertEqual(result["iowait_ticks"],  agg["iowait"])
+        self.assertEqual(result["irq_ticks"],     agg["irq"])
+        self.assertEqual(result["softirq_ticks"], agg["softirq"])
+        self.assertEqual(result["steal_ticks"],   agg["steal"])
+        self.assertEqual(result["guest_ticks"],   agg["guest"])
+
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
@@ -279,13 +295,9 @@ class TestUpdateValues(unittest.TestCase):
 
     def test_updatevalues_called_on_init(self):
         with patch.object(linux_cpu.Cpu, "UpdateValues") as mock_update:
-            linux_cpu.Cpu.__new__(linux_cpu.Cpu).__init__()
-            # __init__ calls UpdateValues
-        # We can't easily call __init__ without triggering real file reads,
-        # so just verify UpdateValues is wired to __init__ by checking the source.
-        import inspect
-        src = inspect.getsource(linux_cpu.Cpu.__init__)
-        self.assertIn("UpdateValues", src)
+            cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
+            cpu.__init__()
+        mock_update.assert_called_once()
 
 
 if __name__ == "__main__":
