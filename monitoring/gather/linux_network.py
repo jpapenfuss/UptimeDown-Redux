@@ -13,6 +13,8 @@
 #
 # References:
 #   https://www.kernel.org/doc/html/latest/networking/statistics.html
+import sys
+sys.dont_write_bytecode = True
 import logging
 import time
 

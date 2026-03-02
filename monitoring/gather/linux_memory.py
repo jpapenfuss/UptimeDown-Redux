@@ -7,6 +7,8 @@
 #                         or False if slabinfo is unreadable (requires root)
 #
 # Both sub-dicts include a '_time' key.
+import sys
+sys.dont_write_bytecode = True
 import time
 import logging
 

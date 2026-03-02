@@ -11,6 +11,7 @@
 #   1. Add an elif branch in the import block below.
 #   2. Add a matching elif branch in main() with its gather calls and JSON keys.
 import sys
+sys.dont_write_bytecode = True
 import time
 timestart = time.time()
 

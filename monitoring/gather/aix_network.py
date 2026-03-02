@@ -11,6 +11,8 @@
 # References:
 #   https://www.ibm.com/docs/en/aix/7.3?topic=interfaces-perfstat-netinterface-interface
 #   OpenJDK shenandoah libperfstat_aix.hpp for struct layout
+import sys
+sys.dont_write_bytecode = True
 import ctypes
 import time
 import logging

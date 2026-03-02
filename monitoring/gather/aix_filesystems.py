@@ -11,6 +11,9 @@
 # This approach captures WPARs and other dynamically-mounted filesystems that
 # are configured but not currently active, allowing alerting when they come
 # online and are already filling up.
+import sys
+sys.dont_write_bytecode = True
+import json
 import logging
 import os
 import time
@@ -20,6 +23,27 @@ logger.addHandler(logging.NullHandler())
 
 
 class AixFilesystems:
+
+    @staticmethod
+    def _parse_options(options_str):
+        """Parse a comma-separated mount options string into a dict.
+
+        Bare flags (e.g. 'rw', 'noatime') map to True.
+        Key=value pairs (e.g. 'size=1g', 'uid=0') map to the value string.
+        The result is intended to be stored as JSON via json.dumps().
+        """
+        opts = {}
+        for token in options_str.split(","):
+            token = token.strip()
+            if not token:
+                continue
+            if "=" in token:
+                k, _, v = token.partition("=")
+                opts[k.strip()] = v.strip()
+            else:
+                opts[token] = True
+        return opts
+
     """AIX filesystem gatherer.
 
     Reads /etc/filesystems for the complete list of configured filesystems
@@ -86,7 +110,7 @@ class AixFilesystems:
                 "mount":      attrs.get("mount", ""),
                 "type":       attrs.get("type", ""),
                 "account":    attrs.get("account", ""),
-                "options":    attrs.get("options", ""),
+                "options":    json.dumps(self._parse_options(attrs.get("options", ""))),
             }
             try:
                 st = os.statvfs(mountpoint)
