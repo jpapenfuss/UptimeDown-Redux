@@ -31,7 +31,11 @@ class Memory:
         # Insert underscore before each uppercase letter that follows a
         # lowercase letter or digit (camelCase boundary).
         s = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', raw)
-        # Collapse any existing underscores (e.g. HugePages_Total already has one).
+        # Handle names that start with a run of uppercase letters (e.g. SReclaimable,
+        # SUnreclaim, KReclaimable) where the first regex finds no lowercase→uppercase
+        # boundary.  Match an uppercase letter followed by another uppercase+lowercase
+        # pair and insert the underscore between them.
+        s = re.sub(r'([A-Z])([A-Z][a-z])', r'\1_\2', s)
         return s.lower()
 
     def GetMeminfo(self):

@@ -92,11 +92,11 @@ class TestExplodeStatvfs(unittest.TestCase):
         self.assertEqual(result["pct_available"], 20.0)
 
     def test_pct_reserved_calculation(self):
-        # reserved = 1 - bavail/blocks; 800/1000 → 80.0%
-        # (different from pct_used which is 1 - bfree/blocks)
+        # 250 free, 200 available → 50 blocks reserved for root → 5.0%
+        # pct_reserved = (f_bfree - f_bavail) / f_blocks = (250-200)/1000 = 5.0
         st = _make_statvfs(f_blocks=1000, f_bfree=250, f_bavail=200)
         result = self._fs().explode_statvfs(st)
-        self.assertEqual(result["pct_reserved"], 80.0)
+        self.assertEqual(result["pct_reserved"], 5.0)
         # pct_reserved must differ from pct_used when there are reserved blocks
         self.assertNotEqual(result["pct_reserved"], result["pct_used"])
 

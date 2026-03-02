@@ -138,7 +138,7 @@ class Filesystems:
             fs_stats["pct_free"]      = int((fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
             fs_stats["pct_available"] = int((fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
             fs_stats["pct_used"]      = int((1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pct_reserved"]  = int((1.0 - fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
+            fs_stats["pct_reserved"]  = int(((fs_stats["f_bfree"] - fs_stats["f_bavail"]) / fs_stats["f_blocks"]) * 1000000) / 10000
         except ZeroDivisionError:
             # Should be unreachable: we already excluded f_blocks == 0 above.
             raise RuntimeError(f"ZeroDivisionError on f_blocks for a mount with f_blocks != 0")

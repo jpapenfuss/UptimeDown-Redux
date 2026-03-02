@@ -76,6 +76,19 @@ class TestGetMeminfo(unittest.TestCase):
             self.assertFalse(any(c.isupper() for c in key),
                              f"Non-snake_case key in output: {key!r}")
 
+    def test_sreclaimable_key_correct(self):
+        # SReclaimable starts with two consecutive uppercase letters — the first
+        # regex pass (lowercase→uppercase) finds no boundary between S and R, so
+        # a second pass is needed.  Without it the key would be "sreclaimable".
+        result = self._run()
+        self.assertIn("s_reclaimable", result)
+        self.assertNotIn("sreclaimable", result)
+
+    def test_sunreclaim_key_correct(self):
+        result = self._run()
+        self.assertIn("s_unreclaim", result)
+        self.assertNotIn("sunreclaim", result)
+
     def test_original_keys_absent(self):
         result = self._run()
         for key in ("MemTotal", "MemFree", "HugePages_Total", "SwapTotal"):
