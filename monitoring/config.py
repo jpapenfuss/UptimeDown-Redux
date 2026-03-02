@@ -14,6 +14,7 @@ class Config:
         """Initialize config from config.ini or defaults."""
         self.run_interval = 60  # seconds
         self.max_iterations = None  # None = run forever
+        self.log_level = "ERROR"  # ERROR or DEBUG
         self._load_config()
 
     def _load_config(self):
@@ -48,6 +49,13 @@ class Config:
                     self.max_iterations = parser.getint("daemon", "max_iterations")
                 except ValueError:
                     pass
+
+        # Load log_level from [logging] section
+        if parser.has_section("logging"):
+            if parser.has_option("logging", "level"):
+                level = parser.get("logging", "level").upper()
+                if level in ("DEBUG", "ERROR"):
+                    self.log_level = level
 
     def __repr__(self):
         return (
