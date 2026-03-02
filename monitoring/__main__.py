@@ -135,9 +135,10 @@ def print_timings(timings):
         print(f"Time from end of CPU Info to end of Memory: \t\t{timings['memory']}")
         if timings['slabs'] is not None:
             print(f"Time from end of Memory to end of Slabs: \t\t{timings['slabs']}")
+            print(f"Time from end of Slabs to end of FS: \t\t\t{timings['fs']}")
         else:
             print(f"Time from end of Memory to end of Slabs: \t\tskipped (slabinfo unreadable)")
-        print(f"Time from end of Slabs to end of FS: \t\t\t{timings['fs']}")
+            print(f"Time from end of Memory to end of FS: \t\t\t{timings['fs']}")
 
     print(f"Time to generate json: \t\t\t\t\t{timings['json']}")
 
