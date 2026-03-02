@@ -200,15 +200,15 @@ def get_cpu_total():
     # Normalize to schema column names so AIX and Linux rows share the same keys.
     # AIX-only fields keep their names; cross-platform tick counters are renamed.
     la = raw.pop("loadavg")
+    raw["user_ticks"]    = raw.pop("user")
+    raw["sys_ticks"]     = raw.pop("sys")
+    raw["idle_ticks"]    = raw.pop("idle")
+    raw["iowait_ticks"]  = raw.pop("wait")
+    raw["processor_hz"]  = raw.pop("processorHZ")
+    raw["loadavg_1"]     = la[0]
+    raw["loadavg_5"]     = la[1]
+    raw["loadavg_15"]    = la[2]
     result = raw
-    result["user_ticks"]    = result.pop("user")
-    result["sys_ticks"]     = result.pop("sys")
-    result["idle_ticks"]    = result.pop("idle")
-    result["iowait_ticks"]  = result.pop("wait")
-    result["processor_hz"]  = result.pop("processorHZ")
-    result["loadavg_1"]     = la[0]
-    result["loadavg_5"]     = la[1]
-    result["loadavg_15"]    = la[2]
 
     result["_time"] = time.time()
 

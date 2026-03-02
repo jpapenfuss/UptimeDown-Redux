@@ -98,7 +98,10 @@ class AixFilesystems:
                 stripped = line.strip()
                 if not stripped or stripped.startswith("*"):
                     continue
-                if not line[0].isspace() and stripped.endswith(":"):
+                # Stanza headers start at column 0 with no leading whitespace and end with ":".
+                # Use stripped (whitespace-removed) to detect headers, ensuring tabs/spaces are
+                # treated uniformly. Check that original line doesn't start with whitespace.
+                if stripped and not line.startswith((' ', '\t')) and stripped.endswith(":"):
                     current_stanza = stripped.rstrip(":")
                     config[current_stanza] = {}
                 elif current_stanza and "=" in line:
@@ -164,8 +167,9 @@ class AixFilesystems:
     def __init__(self):
         logger.debug("AixFilesystems: initializing")
         self.filesystems = self.get_filesystems()
-        nmounted = sum(1 for v in self.filesystems.values()
-                       if isinstance(v, dict) and v.get("mounted"))
+        # Count mounted filesystems, excluding the _time metadata key.
+        nmounted = sum(1 for k, v in self.filesystems.items()
+                       if k != "_time" and v.get("mounted"))
         logger.debug("AixFilesystems: initialized (%d total, %d mounted)",
                      len(self.filesystems) - 1, nmounted)
 
