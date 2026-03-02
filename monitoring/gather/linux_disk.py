@@ -101,6 +101,7 @@ class Disk:
             logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
             return None
 
+        ts = time.time()
         with open(self.proc_diskstats_path, "r") as reader:
             # Example line:
             #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
@@ -114,7 +115,7 @@ class Disk:
                 diskstats[diskname] = {
                     "iostats": dict(zip(DISKSTAT_KEYS, list(map(int, diskstats_line))))
                 }
-                diskstats[diskname]["_time"] = time.time()
+                diskstats[diskname]["_time"] = ts
                 diskstats_line = str(reader.readline()).strip().split()
         logger.debug("get_devices: found %d block devices", len(diskstats))
         for devname, entry in diskstats.items():
