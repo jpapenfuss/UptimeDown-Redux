@@ -40,7 +40,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - **`linux_cpu.Cpu`** — `/proc/cpuinfo`, `/proc/stat`, `/proc/softirqs`. Exposes `cpuinfo_values` (hardware info) and `cpustat_values` (per-core usage counters + softirqs). Type coercion via `INTEGER_STATS`, `FLOAT_STATS`, `LIST_STATS` class constants.
 - **`linux_memory.Memory`** — `/proc/meminfo`, `/proc/slabinfo`. Exposes `stats` dict with `memory` and `slabs` sub-dicts. Uses `util.tobytes()` to normalize units (kB/MB/GB/TB → bytes, supporting both SI and IEC).
 - **`linux_filesystems.Filesystems`** — `/proc/mounts` (falls back to `/etc/mtab`), calls `os.statvfs()` for each real filesystem, computes usage percentages. Filters out virtual filesystems via `FS_IGNORE` list.
-- **`linux_disk.Disk`** — `/proc/diskstats` and `/sys/dev/block/`. Exposes `blockdevices` dict and `disk_total` dict.
+- **`linux_disk.Disk`** — `/proc/diskstats`. Exposes `blockdevices` dict keyed by device name (DISKSTAT_KEYS fields). `/sys/block/` enrichment is stubbed out for future use.
 - **`linux_network.Network`** — `/proc/net/dev` and `/sys/class/net/`. Exposes `interfaces` dict with per-interface stats.
 
 **AIX gatherers** (use libperfstat via ctypes):
@@ -53,7 +53,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 ### Shared Utilities (`monitoring/gather/util.py`)
 
 - `caniread(path)` — Checks read access before opening files
-- `tobytes(value, multiplier)` — Converts kB/MB/GB/TB strings to bytes (handles both SI and IEC units)
+- `tobytes(value, unit)` — Converts a (value, unit) pair to bytes, supporting SI (KB=1000) and IEC (KiB=1024) prefixes through exa scale
 
 ### Key Conventions
 
