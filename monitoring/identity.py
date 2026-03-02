@@ -47,7 +47,11 @@ def get_system_id():
             for line in result.split('\n'):
                 if 'value = ' in line:
                     # Extract UUID from: value = "uuid-here"
-                    return line.split('"')[1]
+                    try:
+                        return line.split('"')[1]
+                    except IndexError:
+                        # Malformed output, fall through to fallback
+                        pass
         except (FileNotFoundError, subprocess.CalledProcessError):
             pass
 
