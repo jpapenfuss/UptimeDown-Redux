@@ -25,10 +25,10 @@ logger.addHandler(logging.NullHandler())
 #   ram   = RAM-backed block devices
 # nbd (network block device) and zram are intentionally NOT ignored here
 # in case callers want to monitor them; filter them in the caller if needed.
-IGNORE_PREFIXES = [
+IGNORE_PREFIXES = (
     "loop",
     "ram",
-]
+)
 
 # Column names for /proc/diskstats fields, in order. The device name column
 # (index 2 in the raw file) is popped before zipping, so it is omitted here.
@@ -107,15 +107,15 @@ class Disk:
             #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
             diskstats_line = str(reader.readline()).strip().split()
             while diskstats_line != []:
-                if diskstats_line[2].startswith(tuple(IGNORE_PREFIXES)):
+                if diskstats_line[2].startswith(IGNORE_PREFIXES):
                     diskstats_line = str(reader.readline()).strip().split()
                     continue
                 # Pop the device name from index 2 before zipping the counters.
                 diskname = diskstats_line.pop(2)
                 diskstats[diskname] = {
-                    "iostats": dict(zip(DISKSTAT_KEYS, list(map(int, diskstats_line))))
+                    "iostats": dict(zip(DISKSTAT_KEYS, map(int, diskstats_line))),
+                    "_time": ts,
                 }
-                diskstats[diskname]["_time"] = ts
                 diskstats_line = str(reader.readline()).strip().split()
         logger.debug("get_devices: found %d block devices", len(diskstats))
         for devname, entry in diskstats.items():
