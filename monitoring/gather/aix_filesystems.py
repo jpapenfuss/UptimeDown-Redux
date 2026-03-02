@@ -165,6 +165,7 @@ class AixFilesystems:
         return filesystems
 
     def __init__(self):
+        """Parse /etc/filesystems and probe each mountpoint via statvfs."""
         logger.debug("AixFilesystems: initializing")
         self.filesystems = self.get_filesystems()
         # Count mounted filesystems, excluding the _time metadata key.

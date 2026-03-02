@@ -438,6 +438,7 @@ class AixCpu:
                      self.cpustat_values is not False, self.cpus is not False)
 
     def __init__(self):
+        """Initialise the gatherer and immediately collect CPU stats."""
         logger.debug("AixCpu: initializing")
         self.UpdateValues()
 

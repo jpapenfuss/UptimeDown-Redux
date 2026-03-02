@@ -287,6 +287,7 @@ class AixDisk:
     """
 
     def __init__(self):
+        """Load libperfstat once and collect both aggregate and per-disk stats."""
         logger.debug("AixDisk: initializing")
         lib = _load_lib()
         self.disk_total = get_disk_total(lib)

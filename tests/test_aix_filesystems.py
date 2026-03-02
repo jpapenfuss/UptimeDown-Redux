@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/aix_filesystems.py — get_filesystems() and AixFilesystems class."""
 import os
 import sys
 import unittest
@@ -48,6 +49,7 @@ def _make_statvfs(f_frsize=4096, f_blocks=1000000, f_bfree=600000, f_bavail=5500
 
 
 class TestGetFilesystems(unittest.TestCase):
+    """Tests for get_filesystems(): /etc/filesystems parsing, statvfs probing, and edge cases."""
 
     def _run(self, content=ETC_FILESYSTEMS_SAMPLE, statvfs_side_effect=None):
         if statvfs_side_effect is None:
@@ -166,6 +168,7 @@ class TestGetFilesystems(unittest.TestCase):
 
 
 class TestAixFilesystemsInit(unittest.TestCase):
+    """Verify that AixFilesystems.__init__() calls get_filesystems() and stores the result."""
 
     def test_init_populates_filesystems(self):
         fake = {"/": {"mounted": True, "dev": "/dev/hd4"}, "_time": 1.0}

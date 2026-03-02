@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/util.py — caniread() and tobytes()."""
 import os
 import sys
 import unittest
@@ -8,6 +9,7 @@ import util
 
 
 class TestCaniread(unittest.TestCase):
+    """Verify caniread() returns correct booleans and passes os.R_OK to os.access."""
 
     def test_readable_file_returns_true(self):
         with patch("os.access", return_value=True):
@@ -32,6 +34,7 @@ class TestCaniread(unittest.TestCase):
 
 
 class TestTobytes(unittest.TestCase):
+    """Verify tobytes() correctly converts SI, IEC, and bare-byte unit strings."""
 
     # --- bare bytes ---
     def test_b(self):

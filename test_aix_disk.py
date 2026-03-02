@@ -25,6 +25,8 @@ pp = pprint.PrettyPrinter(indent=4)
 # ---------------------------------------------------------------------------
 
 class perfstat_id_t(ctypes.Structure):
+    """Cursor/name argument passed to perfstat enumeration calls (64-byte name buffer)."""
+
     _fields_ = [
         ("name", ctypes.c_char * IDENTIFIER_LENGTH),
     ]

@@ -176,6 +176,7 @@ class AixNetwork:
         logger.debug("AixNetwork.UpdateValues: complete (%d interfaces)", len(self.interfaces))
 
     def __init__(self):
+        """Initialise the gatherer and immediately collect interface stats."""
         logger.debug("AixNetwork: initializing")
         self.UpdateValues()
 

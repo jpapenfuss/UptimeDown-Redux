@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/aix_cpu.py — get_cpu_total(), get_cpus(), and AixCpu class."""
 import ctypes
 import os
 import sys
@@ -10,12 +11,14 @@ from aix_cpu import get_cpu_total, AixCpu, perfstat_cpu_total_t
 
 
 class TestStructSize(unittest.TestCase):
+    """Verify that the ctypes struct layout matches the on-AIX ABI size (696 bytes)."""
 
     def test_cpu_total_size(self):
         self.assertEqual(ctypes.sizeof(perfstat_cpu_total_t), 696)
 
 
 class TestGetCpuTotal(unittest.TestCase):
+    """Tests for get_cpu_total(): perfstat_cpu_total() call, field normalisation, and error paths."""
 
     def _make_lib(self, retval=1):
         lib = MagicMock()
@@ -116,6 +119,7 @@ class TestGetCpuTotal(unittest.TestCase):
 
 
 class TestAixCpu(unittest.TestCase):
+    """Tests for AixCpu class construction and UpdateValues() refresh behaviour."""
 
     def test_init_populates_cpustat_values(self):
         fake = {"user_ticks": 100, "_time": 1.0}

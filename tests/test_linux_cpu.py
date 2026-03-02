@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/linux_cpu.py — Cpu.GetCpuinfo(), GetCpuProcStats(), and GetCpuSoftIrqs()."""
 import io
 import os
 import sys
@@ -66,6 +67,7 @@ SOFTIRQS_SAMPLE = """\
 
 
 class TestGetCpuinfo(unittest.TestCase):
+    """Tests for GetCpuinfo(): /proc/cpuinfo parsing, type coercion, and error handling."""
 
     def _make_cpu(self, content):
         """Return a Cpu instance with GetCpuinfo() driven by content string."""
@@ -136,6 +138,7 @@ class TestGetCpuinfo(unittest.TestCase):
 
 
 class TestGetCpuProcStats(unittest.TestCase):
+    """Tests for GetCpuProcStats(): /proc/stat parsing, per-core dicts, and schema normalisation."""
 
     def _make_stats(self, stat_content=STAT_SAMPLE, softirq_content=SOFTIRQS_SAMPLE):
         def fake_open(path, *args, **kwargs):
@@ -239,6 +242,7 @@ class TestGetCpuProcStats(unittest.TestCase):
 
 
 class TestGetCpuSoftIrqs(unittest.TestCase):
+    """Tests for GetCpuSoftIrqs(): /proc/softirqs parsing and per-CPU merge into cpustats."""
 
     def _make_softirqs(self, content=SOFTIRQS_SAMPLE):
         cpustats = {
@@ -282,6 +286,7 @@ class TestGetCpuSoftIrqs(unittest.TestCase):
 
 
 class TestUpdateValues(unittest.TestCase):
+    """Tests for Cpu.UpdateValues() and Cpu.__init__() wiring."""
 
     def test_updatevalues_populates_both_attributes(self):
         cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)

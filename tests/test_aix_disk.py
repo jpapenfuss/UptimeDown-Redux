@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/aix_disk.py — _struct_to_dict(), get_disk_total(), get_disks(), and AixDisk."""
 import ctypes
 import os
 import sys
@@ -27,6 +28,7 @@ class TestStructSize(unittest.TestCase):
 
 
 class TestStructToDict(unittest.TestCase):
+    """Verify _struct_to_dict(): padding fields excluded, bytes decoded, integers preserved."""
 
     def test_skips_padding_fields(self):
         buf = perfstat_disk_total_t()
@@ -62,6 +64,7 @@ class TestStructToDict(unittest.TestCase):
 
 
 class TestGetDiskTotal(unittest.TestCase):
+    """Tests for get_disk_total(): perfstat_disk_total() call, field renames, and error paths."""
 
     def _make_lib(self, retval=1):
         lib = MagicMock()
@@ -126,6 +129,7 @@ class TestGetDiskTotal(unittest.TestCase):
 
 
 class TestGetDisks(unittest.TestCase):
+    """Tests for get_disks(): two-call perfstat enumeration pattern, field renames, and failure paths."""
 
     def test_returns_empty_dict_when_count_zero(self):
         lib = MagicMock()
@@ -195,6 +199,7 @@ class TestGetDisks(unittest.TestCase):
 
 
 class TestAixDiskInit(unittest.TestCase):
+    """Verify AixDisk.__init__() loads libperfstat once and populates disk_total and blockdevices."""
 
     def test_init_populates_disk_total_and_blockdevices(self):
         fake_lib = MagicMock()

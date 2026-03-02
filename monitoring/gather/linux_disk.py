@@ -1,10 +1,10 @@
-# Linux disk gatherer. Reads /proc/diskstats and (eventually) /sys/dev/block/.
+# Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters.
 #
 # Exposes a Disk class. After instantiation:
 #   blockdevices — dict keyed by device name, each entry containing an
 #                  "iostats" sub-dict of /proc/diskstats counters plus '_time'.
 #
-# NOTE: get_sys_stats() and get_queue() are stubs. /sys/block enrichment is
+# NOTE: get_sys_stats() and get_queue() are stubs; /sys/block enrichment is
 # not yet implemented.
 #
 # References:
@@ -54,7 +54,7 @@ DISKSTAT_KEYS = (
     "flush_ticks",
 )
 
-# /sys/block/<dev>/ files we intend to read once get_sys_stats() is implemented.
+# /sys/block/<dev>/ attributes that get_sys_stats() would read if implemented.
 BLOCK_FILES = [
     "inflight",
     "size",
@@ -80,6 +80,17 @@ BLOCK_FILES = [
 
 
 class Disk:
+    """Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters.
+
+    After instantiation:
+        blockdevices — dict keyed by device name (e.g. "sda", "nvme0n1"), each
+                       entry containing an "iostats" sub-dict of integer counters
+                       (DISKSTAT_KEYS) and a '_time' key.
+
+    Devices matching IGNORE_PREFIXES (loop*, ram*) are silently skipped.
+    /sys/block enrichment (get_sys_stats, get_queue) is stubbed out for future use.
+    """
+
     sys_block_path = "/sys/block/"
     # /sys/class/block was absent on some older kernels (e.g. QNAP kernel 4.14).
     sys_class_block_path = "/sys/class/block/"
@@ -187,6 +198,7 @@ class Disk:
         logger.debug("get_disks: collected stats for %d devices", len(devs))
 
     def __init__(self):
+        """Initialise blockdevices to {} and call get_disks() to populate it."""
         self.blockdevices = {}
         self.get_disks()
 

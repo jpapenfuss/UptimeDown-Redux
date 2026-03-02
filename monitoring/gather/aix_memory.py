@@ -181,6 +181,7 @@ class AixMemory:
                      self.stats["memory"] is not False)
 
     def __init__(self):
+        """Initialise the gatherer and immediately collect memory stats."""
         logger.debug("AixMemory: initializing")
         self.UpdateValues()
 

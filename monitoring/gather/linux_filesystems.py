@@ -50,6 +50,19 @@ FS_IGNORE = [
 ]
 
 class Filesystems:
+    """Linux filesystem gatherer. Reads /proc/mounts (or /etc/mtab) and calls
+    os.statvfs() on each real (non-virtual) mounted filesystem.
+
+    After instantiation:
+        filesystems — dict keyed by mountpoint path. Each entry contains device,
+                      vfs type, options (JSON string), and space stats derived from
+                      statvfs (bytes_total, pct_used, pct_free, pct_reserved …).
+                      Includes a top-level '_time' key.
+
+    Virtual filesystem types listed in FS_IGNORE are skipped. Mounts that
+    statvfs() reports with f_blocks==0 are also silently dropped and added to
+    the internal fs_reject list to avoid redundant calls on future polls.
+    """
 
     @staticmethod
     def _parse_options(options_str):
@@ -148,7 +161,7 @@ class Filesystems:
         """Read and parse a /proc/mounts-format file into the filesystems dict.
 
         Each non-ignored mount is processed by process_mount(), which calls
-        explode_statvfs() and explode_options(). Mounts that resolve to virtual
+        explode_statvfs() and _parse_options(). Mounts that resolve to virtual
         filesystems (f_blocks == 0) are added to fs_reject so they are silently
         skipped on future calls.
 
@@ -218,8 +231,11 @@ class Filesystems:
         return {mount[1]: entry}
 
     def __init__(self):
-        # fs_reject accumulates mountpoints with no block storage so they are
-        # skipped without a statvfs() call on subsequent UpdateValues() calls.
+        """Parse /proc/mounts (or /etc/mtab) and statvfs each mounted filesystem.
+
+        fs_reject accumulates mountpoints with no block storage so they can be
+        skipped without a redundant statvfs() call on future UpdateValues() calls.
+        """
         self.fs_reject = []
         self.filesystems = self.get_filesystems()
 
