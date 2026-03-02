@@ -16,6 +16,18 @@ logger.addHandler(logging.NullHandler())
 
 
 class Cpu:
+    """Linux CPU gatherer. Reads /proc/cpuinfo, /proc/stat, and /proc/softirqs.
+
+    After instantiation (which calls UpdateValues() immediately):
+        cpuinfo_values  — hardware info dict for cpu0 (model, MHz, flags …)
+        cpustat_values  — per-core tick counters, softirq counts, and
+                          system-wide stats (ctxt, btime, processes …)
+
+    Both dicts carry a '_time' key. Call UpdateValues() to refresh.
+    The class-level lists (INTEGER_STATS, FLOAT_STATS, LIST_STATS) control
+    how raw string values are coerced during parsing.
+    """
+
     # Fields from /proc/cpuinfo and /proc/stat that should be coerced to int.
     INTEGER_STATS = [
         "apicid",

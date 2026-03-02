@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/linux_memory.py — Memory.GetMeminfo() and GetSlabinfo()."""
 import io
 import os
 import sys
@@ -39,6 +40,7 @@ kmalloc-256        1234   2048    256   16   1 : tunables   0   0   0 : slabdata
 
 
 class TestGetMeminfo(unittest.TestCase):
+    """Tests for GetMeminfo(): /proc/meminfo parsing, unit conversion, and key normalisation."""
 
     def _run(self, content=MEMINFO_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
@@ -102,6 +104,7 @@ class TestGetMeminfo(unittest.TestCase):
 
 
 class TestGetSlabinfo(unittest.TestCase):
+    """Tests for GetSlabinfo(): /proc/slabinfo v2.1 parsing, header skipping, and field mapping."""
 
     def _run(self, content=SLABINFO_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
@@ -157,6 +160,7 @@ class TestGetSlabinfo(unittest.TestCase):
 
 
 class TestMemoryInit(unittest.TestCase):
+    """Tests for Memory.__init__() — verifies both sub-dicts are populated correctly."""
 
     def test_stats_has_memory_and_slabs_keys(self):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)

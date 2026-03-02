@@ -1,4 +1,9 @@
-# Shared utility functions used by all gatherer modules.
+"""Shared utility functions used by all platform gatherer modules.
+
+caniread() — preflight read-access check for /proc and /sys paths.
+tobytes()  — converts a (value, unit) pair to bytes, supporting both SI
+             (KB=1000) and IEC (KiB=1024) unit prefixes through exa scale.
+"""
 import sys
 sys.dont_write_bytecode = True
 import os

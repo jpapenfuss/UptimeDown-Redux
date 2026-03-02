@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/aix_network.py — get_interfaces() and AixNetwork class."""
 import ctypes
 import os
 import sys
@@ -10,6 +11,7 @@ from aix_network import get_interfaces, AixNetwork, perfstat_netinterface_t
 
 
 class TestStructSize(unittest.TestCase):
+    """Verify perfstat_netinterface_t layout matches the on-AIX ABI size (224 bytes)."""
 
     def test_netinterface_size(self):
         # sizeof verified: 64+64+1+7pad + 11×8 = 224
@@ -17,6 +19,7 @@ class TestStructSize(unittest.TestCase):
 
 
 class TestGetInterfaces(unittest.TestCase):
+    """Tests for get_interfaces(): two-call enumeration, field renames (ipacets→ipackets), and error paths."""
 
     def _make_lib(self, nifaces=2):
         """Return a mock libperfstat that returns nifaces on count call and
@@ -130,6 +133,7 @@ class TestGetInterfaces(unittest.TestCase):
 
 
 class TestAixNetwork(unittest.TestCase):
+    """Tests for AixNetwork class: init wiring, UpdateValues() refresh, and get_interfaces() delegation."""
 
     def test_init_populates_interfaces(self):
         fake = {"en0": {"ibytes": 100, "_time": 1.0}}

@@ -1,3 +1,5 @@
+"""Tests for monitoring/gather/linux_disk.py — Disk.get_devices() /proc/diskstats parsing,
+IGNORE_PREFIXES filtering, and partial-field handling for older kernels."""
 import io
 import os
 import sys
@@ -29,6 +31,7 @@ DISKSTATS_SAMPLE_19 = """\
 
 
 class TestGetDevices(unittest.TestCase):
+    """Tests for get_devices(): /proc/diskstats parsing, IGNORE_PREFIXES filtering, and field mapping."""
 
     def _run(self, content=DISKSTATS_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
@@ -137,6 +140,7 @@ class TestGetDevices(unittest.TestCase):
 
 
 class TestGetDisks(unittest.TestCase):
+    """Tests for get_disks(): orchestration of get_devices() + get_sys_stats() calls."""
 
     def test_populates_blockdevices_on_success(self):
         fake_devices = {"sda": {"iostats": {"major": 8, "minor": 0}, "_time": 1.0}}
@@ -168,6 +172,7 @@ class TestGetDisks(unittest.TestCase):
 
 
 class TestStubs(unittest.TestCase):
+    """Confirm stub methods return their documented sentinel values."""
 
     def test_get_sys_stats_returns_none(self):
         d = Disk.__new__(Disk)
@@ -179,6 +184,7 @@ class TestStubs(unittest.TestCase):
 
 
 class TestDiskInit(unittest.TestCase):
+    """Tests for Disk.__init__(): verifies get_disks() is called on construction."""
 
     def test_blockdevices_initialized_empty(self):
         d = Disk.__new__(Disk)

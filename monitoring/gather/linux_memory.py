@@ -17,6 +17,16 @@ logger.addHandler(logging.NullHandler())
 
 
 class Memory:
+    """Linux memory gatherer. Reads /proc/meminfo and /proc/slabinfo.
+
+    After instantiation:
+        stats["memory"] — all /proc/meminfo fields, values converted to bytes,
+                          keys normalised to snake_case (e.g. mem_total). Always present.
+        stats["slabs"]  — per-slab kernel allocator stats from /proc/slabinfo,
+                          or False if the file is unreadable (requires root).
+
+    Both sub-dicts carry a '_time' key.
+    """
 
     @staticmethod
     def _meminfo_key(raw):
@@ -164,6 +174,7 @@ class Memory:
         return slabs
 
     def __init__(self):
+        """Read /proc/meminfo and /proc/slabinfo and populate self.stats."""
         logger.debug("Memory: initializing")
         self.stats = {}
         self.stats["memory"] = self.GetMeminfo()

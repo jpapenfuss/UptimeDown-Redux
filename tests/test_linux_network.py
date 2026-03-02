@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/linux_network.py — Network.get_interfaces() /proc/net/dev parsing."""
 import io
 import os
 import sys
@@ -20,6 +21,7 @@ Inter-|   Receive                                                |  Transmit
 
 
 class TestGetInterfaces(unittest.TestCase):
+    """Tests for get_interfaces(): /proc/net/dev parsing, counter field mapping, and error handling."""
 
     def _run(self, content=NET_DEV_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
@@ -92,6 +94,7 @@ class TestGetInterfaces(unittest.TestCase):
 
 
 class TestNetworkInit(unittest.TestCase):
+    """Tests for Network.__init__(): verifies get_interfaces() is called on construction."""
 
     def test_init_populates_interfaces(self):
         fake = {"eth0": {"ibytes": 100, "_time": 1.0}}

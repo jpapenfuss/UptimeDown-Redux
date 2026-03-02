@@ -1,3 +1,5 @@
+"""Tests for monitoring/gather/linux_filesystems.py — Filesystems class statvfs parsing,
+mount option handling, FS_IGNORE filtering, and fallback to /etc/mtab."""
 import io
 import os
 import sys
@@ -33,6 +35,7 @@ def _make_statvfs(f_frsize=4096, f_blocks=1000000, f_bfree=500000, f_bavail=4500
 
 
 class TestExplodeStatvfs(unittest.TestCase):
+    """Tests for explode_statvfs(): byte calculations, percentage arithmetic, and f_frsize usage."""
 
     def _fs(self):
         fs = Filesystems.__new__(Filesystems)
@@ -128,6 +131,7 @@ class TestExplodeStatvfs(unittest.TestCase):
 
 
 class TestProcessMount(unittest.TestCase):
+    """Tests for process_mount(): FS_IGNORE filtering, reject list, options parsing, and OSError handling."""
 
     def _fs(self):
         fs = Filesystems.__new__(Filesystems)
@@ -212,6 +216,7 @@ class TestProcessMount(unittest.TestCase):
 
 
 class TestGetFilesystems(unittest.TestCase):
+    """Tests for get_filesystems(): /proc/mounts preference, /etc/mtab fallback, and error path."""
 
     def test_prefers_proc_mounts(self):
         fs = Filesystems.__new__(Filesystems)
@@ -240,6 +245,7 @@ class TestGetFilesystems(unittest.TestCase):
 
 
 class TestGetFilesystemsFromProc(unittest.TestCase):
+    """End-to-end tests for get_filesystems_from_proc(): full parse path from mount file to output dict."""
 
     def test_has_time_key(self):
         st = _make_statvfs()

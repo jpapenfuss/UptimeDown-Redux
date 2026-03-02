@@ -44,6 +44,16 @@ NET_DEV_KEYS = (
 
 
 class Network:
+    """Linux network interface gatherer. Reads /proc/net/dev.
+
+    After instantiation:
+        interfaces — dict keyed by interface name (e.g. 'eth0', 'lo'), each entry
+                     containing the 16 counters from NET_DEV_KEYS and a '_time' key.
+
+    All counter fields are cumulative since boot. Compute rates by differencing
+    adjacent samples at query time.
+    """
+
     proc_net_dev_path = "/proc/net/dev"
 
     def get_interfaces(self):
@@ -99,6 +109,7 @@ class Network:
         return interfaces
 
     def __init__(self):
+        """Read /proc/net/dev and populate self.interfaces."""
         self.interfaces = self.get_interfaces()
 
 

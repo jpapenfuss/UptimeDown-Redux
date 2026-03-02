@@ -1,3 +1,4 @@
+"""Tests for monitoring/gather/aix_memory.py — get_memory_total() and AixMemory class."""
 import ctypes
 import os
 import sys
@@ -10,12 +11,14 @@ from aix_memory import get_memory_total, AixMemory, perfstat_memory_total_t, PAG
 
 
 class TestStructSize(unittest.TestCase):
+    """Verify that the ctypes struct layout matches the on-AIX ABI size (176 bytes)."""
 
     def test_memory_total_size(self):
         self.assertEqual(ctypes.sizeof(perfstat_memory_total_t), 176)
 
 
 class TestGetMemoryTotal(unittest.TestCase):
+    """Tests for get_memory_total(): perfstat_memory_total() call, page→byte conversion, and error paths."""
 
     def _make_lib(self, retval=1):
         lib = MagicMock()
@@ -109,6 +112,7 @@ class TestGetMemoryTotal(unittest.TestCase):
 
 
 class TestAixMemory(unittest.TestCase):
+    """Tests for AixMemory class: stats dict shape, slabs=None invariant, and UpdateValues()."""
 
     def test_init_creates_stats_with_memory_and_slabs(self):
         fake = {"mem_total": 1024 * PAGE_SIZE, "_time": 1.0}
