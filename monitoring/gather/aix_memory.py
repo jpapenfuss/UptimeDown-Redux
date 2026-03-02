@@ -71,14 +71,25 @@ def get_memory_total():
     """Call perfstat_memory_total() and return a normalized memory stats dict.
 
     Page-valued fields are converted to bytes (pages * PAGE_SIZE = pages * 4096).
-    Counter fields are stored as-is (cumulative since boot).
+    Counter fields (pgexct, pgins, pgouts, etc.) are stored as-is — they are
+    cumulative since boot and rates should be computed at query time.
 
     Normalized keys shared with the Linux memory gatherer:
         mem_total    — total RAM in bytes        (real_total * PAGE_SIZE)
         mem_free     — free RAM in bytes         (real_free  * PAGE_SIZE)
         mem_cached   — file cache in bytes       (numperm    * PAGE_SIZE)
-        swap_total   — total swap in bytes       (pgsp_total * PAGE_SIZE)
-        swap_free    — free swap in bytes        (pgsp_free  * PAGE_SIZE)
+        swap_total   — total paging space bytes  (pgsp_total * PAGE_SIZE)
+        swap_free    — free paging space bytes   (pgsp_free  * PAGE_SIZE)
+
+    AIX-only page fields (also converted to bytes):
+        real_pinned  — RAM locked in memory (cannot be paged out)
+        real_inuse   — RAM currently in use
+        real_system  — RAM used by kernel segments
+        real_user    — RAM used by user segments
+        real_process — RAM used by process segments
+        virt_total   — total virtual address space
+        virt_active  — currently active virtual pages
+        pgsp_rsvd    — reserved (but not yet used) paging space
 
     Returns False and logs an error if the perfstat call fails.
     """

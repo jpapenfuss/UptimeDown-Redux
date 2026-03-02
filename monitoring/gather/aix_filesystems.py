@@ -60,17 +60,28 @@ class AixFilesystems:
     def get_filesystems(self):
         """Parse /etc/filesystems and enrich with statvfs where mounted.
 
-        /etc/filesystems stanza format:
+        /etc/filesystems stanza format (AIX-specific):
             /mountpoint:
                     dev     = /dev/fslv00
                     vfs     = jfs2
                     log     = INLINE
-                    mount   = false
-                    type    = wpar01
+                    mount   = false|automatic|true
+                    type    = wpar01       (WPAR name; absent for global LPARs)
                     account = false
 
-        Returns a dict keyed by mountpoint. All configured filesystems are
-        included. The 'mounted' key distinguishes live entries from config-only.
+        Every stanza is parsed and attempted via os.statvfs():
+          - Success (mounted):   entry gets full statvfs-derived space stats,
+                                 mounted=True, pct_used/pct_free/bytes_* fields.
+          - OSError (unmounted): entry carries only config fields, mounted=False.
+            This captures WPAR filesystems that are configured but not active,
+            enabling alerting when they come online already nearly full.
+
+        The 'options' field (if present in /etc/filesystems) is parsed into a
+        JSON object by _parse_options() — bare flags map to true, key=value
+        pairs map to the value string.
+
+        Returns a dict keyed by mountpoint, with a top-level '_time' key.
+        Returns {} and logs an error if /etc/filesystems is unreadable.
         """
         logger.debug("get_filesystems: reading /etc/filesystems")
         etc_fs_path = "/etc/filesystems"

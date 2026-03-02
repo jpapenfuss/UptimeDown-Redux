@@ -93,6 +93,17 @@ class Disk:
         an "iostats" sub-dict of integer counters mapped by DISKSTAT_KEYS, plus
         a '_time' timestamp.  Devices whose names start with any prefix in
         IGNORE_PREFIXES are skipped.
+
+        /proc/diskstats format (one line per device):
+            major minor name field1 field2 ... fieldN
+        The device name is at index 2; it is popped before zipping so the
+        remaining tokens align with DISKSTAT_KEYS positionally.
+
+        Counters beyond the first 11 (discard and flush fields) were added in
+        Linux 4.18 and 5.5 respectively.  zip() stops at the shorter iterable,
+        so older kernels with fewer fields are handled without error — the
+        missing counters simply won't appear in the output dict.
+
         Returns None if /proc/diskstats is unreadable.
         """
         logger.debug("get_devices: reading %s", self.proc_diskstats_path)
@@ -102,12 +113,18 @@ class Disk:
             return None
 
         ts = time.time()
+        nskipped = 0
         with open(self.proc_diskstats_path, "r") as reader:
             # Example line:
             #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
+            # Fields: major minor name [DISKSTAT_KEYS...]
             diskstats_line = str(reader.readline()).strip().split()
             while diskstats_line != []:
                 if diskstats_line[2].startswith(IGNORE_PREFIXES):
+                    # Skip loop and ram devices — they inflate the device list
+                    # with entries that are never interesting for monitoring.
+                    logger.debug("get_devices: skipping %s (ignored prefix)", diskstats_line[2])
+                    nskipped += 1
                     diskstats_line = str(reader.readline()).strip().split()
                     continue
                 # Pop the device name from index 2 before zipping the counters.
@@ -117,12 +134,14 @@ class Disk:
                     "_time": ts,
                 }
                 diskstats_line = str(reader.readline()).strip().split()
-        logger.debug("get_devices: found %d block devices", len(diskstats))
+        logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
         for devname, entry in diskstats.items():
             s = entry["iostats"]
-            logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d",
+            logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d "
+                         "read_sectors=%d write_sectors=%d",
                          devname, s["major"], s["minor"],
-                         s["read_ios"], s["write_ios"], s["in_flight"])
+                         s["read_ios"], s["write_ios"], s["in_flight"],
+                         s.get("read_sectors", 0), s.get("write_sectors", 0))
         return diskstats
 
     def get_sys_stats(self, devnum):
@@ -147,8 +166,9 @@ class Disk:
         """Collect stats for all non-ignored block devices.
 
         Calls get_devices() for /proc/diskstats counters, then for each device
-        calls get_sys_stats() with its major:minor number to enrich the entry
-        with /sys data (currently a no-op stub).
+        calls get_sys_stats() with its "major:minor" string to enrich the entry
+        with /sys/dev/block/ data (currently a no-op stub — see get_sys_stats).
+        Sets self.blockdevices to the resulting dict.
         """
         logger.debug("get_disks: starting collection")
         devs = self.get_devices()
@@ -156,6 +176,7 @@ class Disk:
             logger.error("get_disks: get_devices() returned None, skipping")
             return
         for dev in devs:
+            # Build the "major:minor" string that /sys/dev/block/ uses as a key.
             devnum = (
                 str(devs[dev]["iostats"]["major"])
                 + ":"

@@ -170,7 +170,12 @@ def get_disk_total(lib):
     """Call perfstat_disk_total() and return aggregate disk stats as a dict.
 
     Passes count=1 and a single-struct buffer. The first argument (id) is NULL
-    since disk_total is a singleton — there is no enumeration.
+    since disk_total is a singleton — unlike perfstat_disk(), it does not
+    enumerate multiple objects and does not use a perfstat_id_t cursor.
+
+    The raw struct fields "number", "size", and "free" are renamed to
+    "ndisks", "size_mb", and "free_mb" to clarify their meaning and units.
+
     Returns False and logs an error if the call does not return exactly 1.
     """
     logger.debug("get_disk_total: calling perfstat_disk_total")
@@ -205,16 +210,19 @@ def get_disk_total(lib):
 def get_disks(lib):
     """Call perfstat_disk() to enumerate all per-disk stats and return them as a dict.
 
-    The perfstat enumeration pattern requires two calls:
-        1. Pass NULL id and NULL buffer with count=0 to get the total disk count.
+    Uses the standard two-call perfstat enumeration pattern:
+        1. Pass NULL id, NULL buffer, count=0 → returns total number of disks.
         2. Allocate an array of that size, set id.name=b"" (FIRST_DISK), then
-           call again with the array pointer and actual count.
+           call again with the array pointer and count to fill the buffer.
 
     The array pointer must be cast to POINTER(perfstat_disk_t) because ctypes
     does not implicitly convert a pointer-to-array to a pointer-to-element.
 
-    Returns a dict keyed by disk name (e.g. "hdisk0"), or an empty dict on error.
-    All entries share a single '_time' timestamp taken after the call returns.
+    The raw "size" and "free" fields are renamed to "size_mb" / "free_mb" to
+    make units explicit — perfstat_disk_t reports both in megabytes.
+
+    Returns a dict keyed by disk name (e.g. "hdisk0"), or an empty dict on
+    error. All entries share a single '_time' timestamp taken after the call.
     """
     logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
     lib.perfstat_disk.argtypes = [

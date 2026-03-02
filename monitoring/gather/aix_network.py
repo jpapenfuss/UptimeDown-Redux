@@ -75,11 +75,18 @@ def get_interfaces():
         1. NULL id, NULL buffer, count=0 → returns total interface count.
         2. Allocate array, set id.name=b"" (FIRST_INTERFACE), call with count.
 
-    Returns a dict keyed by interface name (e.g. 'en0', 'lo0'), or an empty
-    dict on error. All entries share a single '_time' timestamp.
+    The array pointer is cast to POINTER(perfstat_netinterface_t) because ctypes
+    does not implicitly convert a pointer-to-array to a pointer-to-element.
 
     Output keys are normalized to schema column names:
-        ipacets  → ipackets  (corrects the typo in libperfstat.h)
+        ipacets  → ipackets  (corrects the long-standing typo in libperfstat.h)
+
+    Counter fields (ibytes, obytes, ipackets, opackets, ierrors, oerrors,
+    collisions, if_iqdrops, if_arpdrops) are cumulative since boot. Rates
+    should be computed at query time by differencing adjacent rows.
+
+    Returns a dict keyed by interface name (e.g. 'en0', 'lo0'), or an empty
+    dict on error. All entries share a single '_time' timestamp.
     """
     logger.debug("get_interfaces: calling perfstat_netinterface (count query + enumeration)")
     try:

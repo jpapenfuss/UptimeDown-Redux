@@ -51,6 +51,14 @@ class Network:
 
         Each entry is keyed by interface name (e.g. 'eth0', 'lo') and contains
         integer counters mapped by NET_DEV_KEYS, plus a '_time' timestamp.
+
+        /proc/net/dev format:
+            Line 1: "Inter-|   Receive ..."        (human-readable header, skipped)
+            Line 2: " face |bytes packets errs ..."  (column names, skipped)
+            Line 3+: " eth0:  12345  678  0  0 ..."  (one line per interface)
+        The interface name is delimited by a colon; everything after the colon
+        is 16 whitespace-separated integer fields in NET_DEV_KEYS order.
+
         Returns False if /proc/net/dev is unreadable.
         """
         logger.debug("get_interfaces: reading %s", self.proc_net_dev_path)
@@ -61,17 +69,18 @@ class Network:
         interfaces = {}
         ts = time.time()
         with open(self.proc_net_dev_path, "r") as reader:
-            # Skip the two header lines.
+            # Skip the two header lines — they describe column layout but are
+            # not machine-parseable; we rely on NET_DEV_KEYS ordering instead.
             reader.readline()
             reader.readline()
             line = reader.readline()
             while line:
-                # Lines look like:  eth0: 12345 678 0 0 0 0 0 0 98765 432 0 0 0 0 0 0
-                # The interface name is followed by a colon; strip it before splitting.
                 line = line.strip()
                 if not line:
                     line = reader.readline()
                     continue
+                # Split on the first colon to separate interface name from counters.
+                # Example: "  eth0: 12345 678 0 0 0 0 0 0 98765 432 0 0 0 0 0 0"
                 colon = line.index(":")
                 iface = line[:colon].strip()
                 fields = line[colon + 1:].split()
@@ -80,11 +89,13 @@ class Network:
                 line = reader.readline()
         logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
         for iface, stats in interfaces.items():
-            logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d idrop=%d odrop=%d",
+            logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
+                         "idrop=%d odrop=%d ipackets=%d opackets=%d",
                          iface,
                          stats["ibytes"], stats["obytes"],
                          stats["ierrors"], stats["oerrors"],
-                         stats["idrop"], stats["odrop"])
+                         stats["idrop"], stats["odrop"],
+                         stats["ipackets"], stats["opackets"])
         return interfaces
 
     def __init__(self):
