@@ -17,22 +17,16 @@ def caniread(path):
         return True
 
 
-def tobytes(value, multiplier):
-    """Convert a numeric value with a unit string to bytes.
+_IEC = {p + 'ib': 1024 ** e for e, p in enumerate('kmgtpe', 1)}
+_SI  = {p + 'b':  1000 ** e for e, p in enumerate('kmgtpe', 1)}
+_MULTIPLIERS = {'b': 1, **_SI, **_IEC}
 
-    Used when parsing /proc/meminfo lines that look like:
-        MemTotal: 16384 kB
 
-    Supports kB, MB, GB, TB (case-insensitive prefix, long form accepted).
-    Returns 0 for unrecognised multipliers.
+def tobytes(value, unit):
+    """Convert a value with a unit string to bytes.
+
+    Supports SI (KB=1000) and IEC (KiB=1024) prefixes from kilo through exa,
+    plus bare 'b' for bytes. Unit matching is case-insensitive.
+    Returns 0 for unrecognised units.
     """
-    if multiplier in ["kB", "KB", "kilobyte", "kilobytes"]:
-        return value * 1024
-    if multiplier in ["mB", "MB", "megabyte", "megabytes"]:
-        return value * 1024 * 1024
-    if multiplier in ["gB", "GB", "gigabyte", "gigabytes"]:
-        return value * 1024 * 1024 * 1024
-    if multiplier in ["tB", "TB", "terabyte", "terabytes"]:
-        return value * 1024 * 1024 * 1024 * 1024
-    else:
-        return 0
+    return value * _MULTIPLIERS.get(unit.lower(), 0)

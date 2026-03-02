@@ -33,77 +33,68 @@ class TestCaniread(unittest.TestCase):
 
 class TestTobytes(unittest.TestCase):
 
-    # --- kB variants ---
-    def test_kb_lowercase(self):
-        self.assertEqual(util.tobytes(1, "kB"), 1024)
+    # --- bare bytes ---
+    def test_b(self):
+        self.assertEqual(util.tobytes(1, "b"), 1)
 
-    def test_kb_uppercase(self):
-        self.assertEqual(util.tobytes(1, "KB"), 1024)
+    # --- SI (powers of 1000) ---
+    def test_kb_si(self):
+        self.assertEqual(util.tobytes(1, "KB"), 1000)
 
-    def test_kilobyte(self):
-        self.assertEqual(util.tobytes(1, "kilobyte"), 1024)
+    def test_mb_si(self):
+        self.assertEqual(util.tobytes(1, "MB"), 1000 ** 2)
 
-    def test_kilobytes(self):
-        self.assertEqual(util.tobytes(1, "kilobytes"), 1024)
+    def test_gb_si(self):
+        self.assertEqual(util.tobytes(1, "GB"), 1000 ** 3)
 
-    def test_kb_value_multiplied(self):
-        self.assertEqual(util.tobytes(16384, "kB"), 16384 * 1024)
+    def test_tb_si(self):
+        self.assertEqual(util.tobytes(1, "TB"), 1000 ** 4)
 
-    # --- MB variants ---
-    def test_mb_mixed_case(self):
-        self.assertEqual(util.tobytes(1, "mB"), 1024 ** 2)
+    def test_pb_si(self):
+        self.assertEqual(util.tobytes(1, "PB"), 1000 ** 5)
 
-    def test_mb_uppercase(self):
-        self.assertEqual(util.tobytes(1, "MB"), 1024 ** 2)
+    def test_eb_si(self):
+        self.assertEqual(util.tobytes(1, "EB"), 1000 ** 6)
 
-    def test_megabyte(self):
-        self.assertEqual(util.tobytes(1, "megabyte"), 1024 ** 2)
+    # --- IEC (powers of 1024) ---
+    def test_kib(self):
+        self.assertEqual(util.tobytes(1, "KiB"), 1024)
 
-    def test_megabytes(self):
-        self.assertEqual(util.tobytes(1, "megabytes"), 1024 ** 2)
+    def test_mib(self):
+        self.assertEqual(util.tobytes(1, "MiB"), 1024 ** 2)
 
-    # --- GB variants ---
-    def test_gb_mixed_case(self):
-        self.assertEqual(util.tobytes(1, "gB"), 1024 ** 3)
+    def test_gib(self):
+        self.assertEqual(util.tobytes(1, "GiB"), 1024 ** 3)
 
-    def test_gb_uppercase(self):
-        self.assertEqual(util.tobytes(1, "GB"), 1024 ** 3)
+    def test_tib(self):
+        self.assertEqual(util.tobytes(1, "TiB"), 1024 ** 4)
 
-    def test_gigabyte(self):
-        self.assertEqual(util.tobytes(1, "gigabyte"), 1024 ** 3)
+    def test_pib(self):
+        self.assertEqual(util.tobytes(1, "PiB"), 1024 ** 5)
 
-    def test_gigabytes(self):
-        self.assertEqual(util.tobytes(1, "gigabytes"), 1024 ** 3)
+    def test_eib(self):
+        self.assertEqual(util.tobytes(1, "EiB"), 1024 ** 6)
 
-    # --- TB variants ---
-    def test_tb_mixed_case(self):
-        self.assertEqual(util.tobytes(1, "tB"), 1024 ** 4)
+    # --- case-insensitivity ---
+    def test_case_insensitive_si(self):
+        self.assertEqual(util.tobytes(1, "kb"), 1000)
 
-    def test_tb_uppercase(self):
-        self.assertEqual(util.tobytes(1, "TB"), 1024 ** 4)
+    def test_case_insensitive_iec(self):
+        self.assertEqual(util.tobytes(1, "kib"), 1024)
 
-    def test_terabyte(self):
-        self.assertEqual(util.tobytes(1, "terabyte"), 1024 ** 4)
+    # --- value scaling ---
+    def test_value_multiplied(self):
+        self.assertEqual(util.tobytes(16384, "KiB"), 16384 * 1024)
 
-    def test_terabytes(self):
-        self.assertEqual(util.tobytes(1, "terabytes"), 1024 ** 4)
+    # --- unknown / edge cases ---
+    def test_unknown_returns_zero(self):
+        self.assertEqual(util.tobytes(100, "qb"), 0)
 
-    # --- Unknown / edge cases ---
-    def test_unknown_multiplier_returns_zero(self):
-        self.assertEqual(util.tobytes(100, "pb"), 0)
-
-    def test_empty_multiplier_returns_zero(self):
+    def test_empty_returns_zero(self):
         self.assertEqual(util.tobytes(100, ""), 0)
 
-    def test_wrong_case_kb_returns_zero(self):
-        # "kb" (all lowercase) is not in the accepted list
-        self.assertEqual(util.tobytes(1, "kb"), 0)
-
     def test_zero_value(self):
-        self.assertEqual(util.tobytes(0, "kB"), 0)
-
-    def test_large_value_tb(self):
-        self.assertEqual(util.tobytes(1024, "TB"), 1024 * 1024 ** 4)
+        self.assertEqual(util.tobytes(0, "KiB"), 0)
 
 
 if __name__ == "__main__":
