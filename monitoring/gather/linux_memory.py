@@ -44,7 +44,14 @@ class Memory:
         All values with a unit multiplier (kB) are converted to bytes via
         util.tobytes(). Values without a multiplier are stored as plain ints.
         Keys are normalized to snake_case (e.g. MemTotal → mem_total).
-        Exits with an error if /proc/meminfo is unreadable (it always should be).
+
+        /proc/meminfo lines have two forms:
+            MemTotal:       16384 kB   (3 tokens: name, value, unit)
+            HugePages_Total:       0   (2 tokens: name, value — no unit)
+        The colon is stripped from the key before splitting on whitespace.
+
+        Raises RuntimeError if /proc/meminfo is unreadable — it must always
+        exist on Linux; absence indicates a serious kernel or mount problem.
         """
         logger.debug("GetMeminfo: reading /proc/meminfo")
         meminfo_path = "/proc/meminfo"
@@ -55,8 +62,9 @@ class Memory:
         with open(meminfo_path, "r") as reader:
             meminfo_line = str(reader.readline()).strip()
             while meminfo_line != "":
-                # Lines look like:  MemTotal:       16384 kB
-                # Replace the colon so we can split uniformly on whitespace.
+                # Replace the trailing colon on the key so we can split uniformly.
+                # Example before: "MemTotal:       16384 kB"
+                # Example after split: ["MemTotal", "16384", "kB"]
                 meminfo_line = meminfo_line.replace(":", " ")
                 line = meminfo_line.split()
                 key = self._meminfo_key(line[0])
@@ -67,21 +75,33 @@ class Memory:
                 meminfo_values[key] = line[1]
                 meminfo_line = str(reader.readline()).strip()
         meminfo_values["_time"] = time.time()
-        logger.debug("GetMeminfo: parsed %d fields", len(meminfo_values) - 1)
+        nfields = len(meminfo_values) - 1  # exclude _time
+        logger.debug("GetMeminfo: parsed %d fields", nfields)
         logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
                      meminfo_values.get("mem_total", 0),
                      meminfo_values.get("mem_free", 0),
                      meminfo_values.get("mem_available", 0))
-        logger.debug("GetMeminfo: swap_total=%d swap_free=%d",
+        logger.debug("GetMeminfo: swap_total=%d swap_free=%d cached=%d buffers=%d",
                      meminfo_values.get("swap_total", 0),
-                     meminfo_values.get("swap_free", 0))
+                     meminfo_values.get("swap_free", 0),
+                     meminfo_values.get("cached", 0),
+                     meminfo_values.get("buffers", 0))
         return meminfo_values
 
     def GetSlabinfo(self):
         """Parse /proc/slabinfo and return a dict of kernel slab allocator stats.
 
-        /proc/slabinfo requires root. Returns False without error if unreadable
+        /proc/slabinfo requires root. Returns False (not an error) if unreadable
         so the caller can treat slab stats as optional.
+
+        /proc/slabinfo format (v2.1):
+            slabinfo - version: 2.1
+            # name     <active_objs> <num_objs> <objsize> <objperslab> <pagesperslab> \
+            #   : tunables <limit> <batchcount> <sharedfactor> \
+            #   : slabdata <active_slabs> <num_slabs> <sharedavail>
+
+        The ": tunables" and ": slabdata" section markers are stripped before
+        splitting so the 14 data fields can be zipped uniformly.
 
         Each slab entry is stored as a dict of 11 integer fields:
             active_objs, num_objs, objsize, objperslab, pagesperslab,
@@ -97,12 +117,13 @@ class Memory:
         with open("/proc/slabinfo", "r") as reader:
             slabline = reader.readline()
             while slabline != "":
-                # Skip the version header and column-name comment line.
+                # Skip the version header ("slabinfo - version: 2.1") and the
+                # column-name comment line ("# name  <active_objs> ...").
                 if slabline.startswith("slabinfo") or slabline.startswith("# name"):
                     slabline = reader.readline()
                     continue
-                # Each data line has three colon-delimited sections; strip the
-                # section markers so the whole line can be split on whitespace.
+                # Strip ": tunables" and ": slabdata" section markers so the
+                # remaining tokens are uniformly positional.
                 # Before: ext4_inode_cache 30338 44330 1096 29 8 : tunables 0 0 0 : slabdata 2834 2834 0
                 # After:  ext4_inode_cache 30338 44330 1096 29 8   0 0 0   2834 2834 0
                 slabline = slabline.replace(": tunables", "").replace(": slabdata", "")
@@ -128,9 +149,10 @@ class Memory:
                 )
                 slabline = reader.readline()
         slabs["_time"] = time.time()
-        nslabs = len(slabs) - 1
+        nslabs = len(slabs) - 1  # exclude _time
         logger.debug("GetSlabinfo: parsed %d slab entries", nslabs)
-        # Log the top 5 slabs by active_objs so the log is useful without being exhaustive.
+        # Log only the top 5 slabs by active_objs — there can be hundreds of
+        # slab types and logging all of them would flood the debug log.
         top = sorted(
             ((k, v["active_objs"]) for k, v in slabs.items() if k != "_time"),
             key=lambda x: x[1], reverse=True

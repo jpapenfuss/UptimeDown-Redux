@@ -71,8 +71,10 @@ class Cpu:
             # Stop at the first blank line — that ends the cpu0 stanza.
             while cpuinfo_line != "":
                 # Lines look like:  model name      : AMD EPYC 7571
+                # Split on the first colon only; the value may contain colons.
                 split = cpuinfo_line.split(":", 1)
                 if len(split) < 2:
+                    # Line without a colon — skip (shouldn't happen in practice).
                     cpuinfo_line = str(reader.readline()).strip()
                     continue
                 split[0] = split[0].strip()
@@ -82,12 +84,14 @@ class Cpu:
                 elif split[0] in self.FLOAT_STATS:
                     cpuinfo_values[split[0]] = float(split[1])
                 elif split[0] in self.LIST_STATS:
+                    # flags and bugs are space-separated capability strings.
                     cpuinfo_values[split[0]] = split[1].split()
                 else:
                     cpuinfo_values[split[0]] = split[1]
                 cpuinfo_line = str(reader.readline()).strip()
         cpuinfo_values["_time"] = time.time()
-        logger.debug("GetCpuinfo: parsed %d fields for cpu0", len(cpuinfo_values) - 1)
+        nfields = len(cpuinfo_values) - 1  # exclude _time
+        logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
         logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
                      cpuinfo_values.get("model name", "unknown"),
                      cpuinfo_values.get("cpu MHz", "?"),
@@ -104,6 +108,8 @@ class Cpu:
         guarantee correct column-to-CPU mapping regardless of CPU ordering.
 
         The softirq counts are stored under cpustats_values[cpuN]["softirqs"][irqname].
+        Only CPUs that already exist in cpustats_values (populated by GetCpuProcStats)
+        are updated — the aggregate "cpu" key is skipped.
         Returns the updated cpustats_values dict, or False if the file is unreadable.
         """
         logger.debug("GetCpuSoftIrqs: reading /proc/softirqs")
@@ -111,21 +117,27 @@ class Cpu:
         if util.caniread(softirq_path) is False:
             logger.error(f"Fatal: Can't open {softirq_path} for reading.")
             return False
+        nirq_types = 0
         with open(softirq_path, "r") as reader:
             # First line is the header: "    CPU0  CPU1  CPU2 ..."
+            # Parse it to get column→CPU name mapping before reading data rows.
             header_line = str(reader.readline()).strip()
             cpu_columns = [c.strip() for c in header_line.split() if c.strip()]
+            logger.debug("GetCpuSoftIrqs: header lists %d CPU columns", len(cpu_columns))
             softirq_line = str(reader.readline()).strip()
             while softirq_line != "":
                 # Lines look like:  NET_RX:    12345    67890 ...
+                # Strip the trailing colon from the IRQ name before splitting.
                 irq = softirq_line.replace(":", "").split()
                 irqname = irq.pop(0)
                 for i, cpu_name in enumerate(cpu_columns):
                     if cpu_name in cpustats_values and cpu_name != "cpu":
                         cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
+                nirq_types += 1
                 softirq_line = str(reader.readline()).strip()
-        logger.debug("GetCpuSoftIrqs: merged softirqs for %d CPUs",
-                     sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu"))
+        ncpus = sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu")
+        logger.debug("GetCpuSoftIrqs: merged %d softirq types across %d CPUs",
+                     nirq_types, ncpus)
         return cpustats_values
 
     def GetCpuProcStats(self):
@@ -136,12 +148,20 @@ class Cpu:
         sub-dict is also populated by calling GetCpuSoftIrqs once the per-CPU
         section of /proc/stat is exhausted (triggered by the "intr" line).
 
-        Non-CPU lines (ctxt, btime, processes, etc.) are stored at the top level,
-        coerced to int or float where known.
+        Non-CPU lines (ctxt, btime, processes, procs_running, procs_blocked)
+        are stored at the top level, coerced to int or float where known.
+
+        After parsing, the aggregate "cpu" row's tick counters are also promoted
+        to top-level schema keys (user_ticks, sys_ticks, etc.) so Linux and AIX
+        samples share the same column names in the cpu_stats table.
+
         Returns False if /proc/stat is unreadable.
         """
         logger.debug("GetCpuProcStats: reading /proc/stat")
         cpustats_values = {}
+        # /proc/stat CPU line columns, in order. Not all kernels populate all fields;
+        # zip() stops at the shorter of the two so missing trailing fields are silently
+        # omitted rather than causing an IndexError.
         cpustats_labels = ["user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"]
         stat_path = "/proc/stat"
         if util.caniread(stat_path) is False:
@@ -157,11 +177,12 @@ class Cpu:
                     cpustats_values[cpu_name] = dict(
                         zip(cpustats_labels, map(int, split))
                     )
+                    # Softirqs are merged in after the per-CPU section is fully read.
                     cpustats_values[cpu_name]["softirqs"] = {}
                 elif stat_line.startswith("intr"):
                     # The "intr" line marks the end of the per-CPU section.
                     # Pull softirq counts from /proc/softirqs now so they can
-                    # be attached to the already-parsed CPU entries.
+                    # be attached to the already-parsed per-core dicts.
                     result = self.GetCpuSoftIrqs(cpustats_values)
                     if result is not False:
                         cpustats_values = result
@@ -173,6 +194,7 @@ class Cpu:
                     elif key in self.FLOAT_STATS:
                         cpustats_values[key] = float(split[0])
                     elif key == "softirq":
+                        # "softirq" line: total followed by per-type counts.
                         cpustats_values[key] = list(map(int, split))
                     else:
                         cpustats_values[key] = split
@@ -180,8 +202,8 @@ class Cpu:
 
         cpustats_values["_time"] = time.time()
 
-        # Normalize aggregate CPU row to schema column names so Linux and AIX
-        # rows share the same keys in the cpu_stats table.
+        # Promote aggregate CPU row's tick counters to top-level schema column names
+        # so Linux and AIX rows share the same keys in the cpu_stats table.
         # The per-core sub-dicts (cpu0, cpu1, ...) keep their original names.
         agg = cpustats_values.get("cpu", {})
         cpustats_values["user_ticks"]     = agg.get("user")
@@ -203,10 +225,11 @@ class Cpu:
                      cpustats_values.get("idle_ticks"),
                      cpustats_values.get("iowait_ticks"),
                      cpustats_values.get("steal_ticks"))
-        logger.debug("GetCpuProcStats: procs_running=%s procs_blocked=%s ctxt=%s",
+        logger.debug("GetCpuProcStats: procs_running=%s procs_blocked=%s ctxt=%s btime=%s",
                      cpustats_values.get("procs_running"),
                      cpustats_values.get("procs_blocked"),
-                     cpustats_values.get("ctxt"))
+                     cpustats_values.get("ctxt"),
+                     cpustats_values.get("btime"))
         return cpustats_values
 
     def UpdateValues(self):

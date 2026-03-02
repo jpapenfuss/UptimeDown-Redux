@@ -152,7 +152,15 @@ def get_cpu_total():
 
     Calls with count=1 to fill a single perfstat_cpu_total_t buffer.
     Skips padding fields (_padN) when building the result dict.
-    The 'loadavg' array is unpacked to a plain Python list.
+    The 'loadavg' array is unpacked to a plain Python list and then split
+    into loadavg_1/5/15 keys so they match the schema column names.
+
+    The raw loadavg values from perfstat are fixed-point integers scaled by
+    FSCALE (2^16 = 65536 on AIX). Divide by 65536.0 for the familiar float.
+
+    Tick counters (user, sys, idle, wait) are renamed to user_ticks/sys_ticks/
+    idle_ticks/iowait_ticks to match the cross-platform cpu_stats schema.
+
     Returns False and logs an error if the call does not return exactly 1.
     """
     logger.debug("get_cpu_total: calling perfstat_cpu_total")
