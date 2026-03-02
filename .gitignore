@@ -1,6 +1,30 @@
+# Python
 *.pyc
+*.pyo
+*.pyd
 __pycache__/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# IDE and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logging
 *.log
+
+# Project-specific
 .claude/
 env/
 reporter.sh
