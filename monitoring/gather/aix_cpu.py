@@ -33,6 +33,93 @@ class perfstat_id_t(ctypes.Structure):
     ]
 
 
+class perfstat_cpu_t(ctypes.Structure):
+    """Matches perfstat_cpu_t from libperfstat.h (AIX 7.3).
+
+    Per-CPU statistics struct returned by perfstat_cpu() enumeration.
+    Size: ~504 bytes per struct.
+
+    Fields include per-CPU tick counters (user, sys, idle, wait), I/O metrics,
+    scheduler domain redispatches, PURR/SPURR cycles, hypervisor page-ins,
+    and thread dispatch statistics.
+    """
+    _fields_ = [
+        ("name",                   ctypes.c_char * IDENTIFIER_LENGTH),
+        ("user",                   ctypes.c_ulonglong),
+        ("sys",                    ctypes.c_ulonglong),
+        ("idle",                   ctypes.c_ulonglong),
+        ("wait",                   ctypes.c_ulonglong),
+        ("pswitch",                ctypes.c_ulonglong),
+        ("syscall",                ctypes.c_ulonglong),
+        ("sysread",                ctypes.c_ulonglong),
+        ("syswrite",               ctypes.c_ulonglong),
+        ("sysfork",                ctypes.c_ulonglong),
+        ("sysexec",                ctypes.c_ulonglong),
+        ("readch",                 ctypes.c_ulonglong),
+        ("writech",                ctypes.c_ulonglong),
+        ("bread",                  ctypes.c_ulonglong),
+        ("bwrite",                 ctypes.c_ulonglong),
+        ("lread",                  ctypes.c_ulonglong),
+        ("lwrite",                 ctypes.c_ulonglong),
+        ("phread",                 ctypes.c_ulonglong),
+        ("phwrite",                ctypes.c_ulonglong),
+        ("iget",                   ctypes.c_ulonglong),
+        ("namei",                  ctypes.c_ulonglong),
+        ("dirblk",                 ctypes.c_ulonglong),
+        ("msg",                    ctypes.c_ulonglong),
+        ("sema",                   ctypes.c_ulonglong),
+        ("minfaults",              ctypes.c_ulonglong),
+        ("majfaults",              ctypes.c_ulonglong),
+        ("puser",                  ctypes.c_ulonglong),
+        ("psys",                   ctypes.c_ulonglong),
+        ("pidle",                  ctypes.c_ulonglong),
+        ("pwait",                  ctypes.c_ulonglong),
+        ("redisp_sd0",             ctypes.c_ulonglong),
+        ("redisp_sd1",             ctypes.c_ulonglong),
+        ("redisp_sd2",             ctypes.c_ulonglong),
+        ("redisp_sd3",             ctypes.c_ulonglong),
+        ("redisp_sd4",             ctypes.c_ulonglong),
+        ("redisp_sd5",             ctypes.c_ulonglong),
+        ("migration_push",         ctypes.c_ulonglong),
+        ("migration_S3grq",        ctypes.c_ulonglong),
+        ("migration_S3pul",        ctypes.c_ulonglong),
+        ("invol_cswitch",          ctypes.c_ulonglong),
+        ("vol_cswitch",            ctypes.c_ulonglong),
+        ("runque",                 ctypes.c_ulonglong),
+        ("bound",                  ctypes.c_ulonglong),
+        ("decrintrs",              ctypes.c_ulonglong),
+        ("mpcrintrs",              ctypes.c_ulonglong),
+        ("mpcsintrs",              ctypes.c_ulonglong),
+        ("devintrs",               ctypes.c_ulonglong),
+        ("softintrs",              ctypes.c_ulonglong),
+        ("phantintrs",             ctypes.c_ulonglong),
+        ("idle_donated_purr",      ctypes.c_ulonglong),
+        ("idle_donated_spurr",     ctypes.c_ulonglong),
+        ("busy_donated_purr",      ctypes.c_ulonglong),
+        ("busy_donated_spurr",     ctypes.c_ulonglong),
+        ("idle_stolen_purr",       ctypes.c_ulonglong),
+        ("idle_stolen_spurr",      ctypes.c_ulonglong),
+        ("busy_stolen_purr",       ctypes.c_ulonglong),
+        ("busy_stolen_spurr",      ctypes.c_ulonglong),
+        ("hpi",                    ctypes.c_ulonglong),
+        ("hpit",                   ctypes.c_ulonglong),
+        ("puser_spurr",            ctypes.c_ulonglong),
+        ("psys_spurr",             ctypes.c_ulonglong),
+        ("pidle_spurr",            ctypes.c_ulonglong),
+        ("pwait_spurr",            ctypes.c_ulonglong),
+        ("spurrflag",              ctypes.c_int),
+        ("localdispatch",          ctypes.c_ulonglong),
+        ("neardispatch",           ctypes.c_ulonglong),
+        ("fardispatch",            ctypes.c_ulonglong),
+        ("cswitches",              ctypes.c_ulonglong),
+        ("version",                ctypes.c_ulonglong),
+        ("tb_last",                ctypes.c_ulonglong),
+        ("state",                  ctypes.c_char),
+        ("vtb_last",               ctypes.c_ulonglong),
+        ("icount_last",            ctypes.c_ulonglong),
+    ]
+
+
 class perfstat_cpu_total_t(ctypes.Structure):
     """Matches perfstat_cpu_total_t_72 from libperfstat.h (AIX 7.2/7.3).
 
@@ -147,6 +234,96 @@ def _load_libperfstat():
     return ctypes.CDLL("libperfstat.a(shr_64.o)")
 
 
+def get_cpus():
+    """Enumerate per-CPU statistics via perfstat_cpu() and return as a dict.
+
+    Calls perfstat_cpu() twice: first to query the count of CPUs, then to
+    enumerate all CPUs. Uses the perfstat_id_t cursor pattern to retrieve
+    all CPUs in a single call (no pagination needed for typical systems).
+
+    The result is a dict keyed by CPU name (e.g. "cpu0", "cpu1") with each
+    value being a dict of per-CPU counters. The 'state' byte is decoded to
+    a string ('online' or 'offline'). All other fields follow the same
+    normalization as get_cpu_total() (no _pad fields, renamed to match schema).
+
+    Returns False and logs an error if the enumeration fails.
+    """
+    logger.debug("get_cpus: calling perfstat_cpu")
+    lib = _load_libperfstat()
+
+    lib.perfstat_cpu.argtypes = [
+        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(perfstat_cpu_t),
+        ctypes.c_int,
+        ctypes.c_int,
+    ]
+    lib.perfstat_cpu.restype = ctypes.c_int
+
+    # Query count: call with NULL buffer to get the number of CPUs
+    ncpus = lib.perfstat_cpu(None, None, ctypes.sizeof(perfstat_cpu_t), 0)
+    if ncpus <= 0:
+        logger.error(f"perfstat_cpu count query returned {ncpus}, expected > 0")
+        return False
+
+    logger.debug("get_cpus: enumeration will return %d CPUs", ncpus)
+
+    # Allocate array for all CPUs
+    CpuArray = perfstat_cpu_t * ncpus
+    cpu_buf = CpuArray()
+
+    # Initialize perfstat_id_t with name="" (FIRST_CPU constant)
+    id_buf = perfstat_id_t()
+    id_buf.name = b""
+
+    # Enumerate all CPUs
+    ret = lib.perfstat_cpu(
+        ctypes.byref(id_buf),
+        ctypes.cast(cpu_buf, ctypes.POINTER(perfstat_cpu_t)),
+        ctypes.sizeof(perfstat_cpu_t),
+        ncpus,
+    )
+
+    if ret != ncpus:
+        logger.error(f"perfstat_cpu enumeration returned {ret}, expected {ncpus}")
+        return False
+
+    # Convert to dict keyed by CPU name
+    result = {}
+    for i in range(ncpus):
+        cpu = cpu_buf[i]
+        cpu_name = cpu.name.decode("ascii", errors="replace").rstrip("\x00")
+        cpu_dict = {}
+
+        # Iterate through all fields except padding fields
+        for field_name, _ in perfstat_cpu_t._fields_:
+            val = getattr(cpu, field_name)
+
+            if field_name == "name":
+                # Already used as dict key; skip
+                continue
+            elif field_name == "state":
+                # Decode state char to readable string
+                state_byte = val
+                if isinstance(state_byte, bytes):
+                    state_byte = state_byte[0] if len(state_byte) > 0 else 0
+                elif isinstance(state_byte, str):
+                    state_byte = ord(state_byte) if state_byte else 0
+                # Online state is typically 0x01; offline is 0x00
+                cpu_dict["state"] = "online" if state_byte > 0 else "offline"
+            else:
+                # Keep all numeric fields as-is
+                cpu_dict[field_name] = val
+
+        cpu_dict["_time"] = time.time()
+        result[cpu_name] = cpu_dict
+
+    logger.debug("get_cpus: enumerated %d CPUs", len(result))
+    cpu_names = ", ".join(sorted(result.keys()))
+    logger.debug("get_cpus: CPUs: %s", cpu_names)
+
+    return result
+
+
 def get_cpu_total():
     """Call perfstat_cpu_total() and return the result as a plain dict.
 
@@ -242,20 +419,23 @@ def get_cpu_total():
 
 
 class AixCpu:
-    """AIX CPU gatherer. Wraps get_cpu_total() to match the Linux Cpu interface.
+    """AIX CPU gatherer. Wraps get_cpu_total() and get_cpus() for CPU statistics.
 
     Exposes:
-        cpustat_values — dict from perfstat_cpu_total_t, including '_time'.
+        cpustat_values — dict from perfstat_cpu_total_t (system-wide aggregate), including '_time'.
+        cpus           — dict of per-CPU stats, keyed by CPU name (e.g. "cpu0", "cpu1"), including '_time' per CPU.
 
     Note: AIX has no cpuinfo equivalent accessible without parsing lsattr/lsdev
     output. There is no cpuinfo_values attribute on this class.
     """
 
     def UpdateValues(self):
-        """Refresh cpustat_values by calling perfstat_cpu_total() again."""
+        """Refresh cpustat_values and cpus by calling perfstat functions again."""
         logger.debug("AixCpu.UpdateValues: starting")
         self.cpustat_values = get_cpu_total()
-        logger.debug("AixCpu.UpdateValues: complete (ok=%s)", self.cpustat_values is not False)
+        self.cpus = get_cpus()
+        logger.debug("AixCpu.UpdateValues: complete (total_ok=%s, cpus_ok=%s)",
+                     self.cpustat_values is not False, self.cpus is not False)
 
     def __init__(self):
         logger.debug("AixCpu: initializing")

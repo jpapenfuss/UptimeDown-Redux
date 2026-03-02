@@ -16,6 +16,8 @@ import sys
 sys.dont_write_bytecode = True
 import time
 import signal
+import uuid
+import os
 
 from log_setup import log_setup
 from identity import get_system_id
@@ -57,6 +59,7 @@ def collect_once(logger, json_module):
             "system_id":   _SYSTEM_ID,
             "collected_at": collected_at,
             "cpustats":    mycpu.cpustat_values,
+            "cpus":        mycpu.cpus,
             "disks":       mydisk.blockdevices,
             "disk_total":  mydisk.disk_total,
             "filesystems": myfs.filesystems,
@@ -120,6 +123,22 @@ def collect_once(logger, json_module):
     return jsonout, timings
 
 
+def dump_json_file(json_string, logger):
+    """Dump JSON output to a file with uuid-timestamp naming.
+
+    Filename format: <uuid>-<timestamp>.json
+    Uses current Unix timestamp as the timestamp component.
+    Attempts to write to current directory; silently fails if not writable.
+    """
+    try:
+        filename = f"{uuid.uuid4()}-{int(time.time())}.json"
+        with open(filename, 'w') as f:
+            f.write(json_string)
+        logger.debug(f"Wrote JSON dump to {filename}")
+    except (IOError, OSError) as e:
+        logger.debug(f"Could not write JSON dump file: {e}")
+
+
 def print_timings(timings):
     """Print collection timings."""
     print(f"Time between start and finish: \t\t\t\t{timings['total']}")
@@ -169,6 +188,10 @@ def main():
         # Print diagnostics and JSON
         print_timings(timings)
         print(jsonout)
+
+        # Dump JSON to file if DEBUG logging is enabled
+        if cfg.log_level == "DEBUG":
+            dump_json_file(jsonout, logger)
 
         # Check if we should exit
         if cfg.max_iterations is not None and iteration >= cfg.max_iterations:
