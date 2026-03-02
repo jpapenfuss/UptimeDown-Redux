@@ -10,8 +10,12 @@ changes before modifying the database code.
 
 - **One row per sample per object.** Every collection run inserts new rows; no
   upserts. Historical data is preserved for trending.
-- **`collected_at` is a Unix timestamp** (REAL, seconds since epoch) matching the
-  `_time` value from the gatherer dict wherever available.
+- **`collected_at` is a single Unix timestamp per collection run** (REAL, seconds
+  since epoch, rounded to milliseconds). It is captured once in `__main__.py`
+  before any gatherers run and written identically to every data table.
+  Cross-subsystem joins use exact equality on `(host_id, collected_at)`.
+  Individual gatherers still record their own `_time` in JSON output for
+  diagnostics, but `_time` is not stored in the database.
 - **`host_id` foreign-key** ties every row to the `hosts` table so the same
   database can store data from multiple monitored systems.
 - **NULL is intentional.** Fields that are optional on a given platform or
@@ -40,16 +44,24 @@ changes before modifying the database code.
 
 One row per monitored host. Populated automatically the first time a host reports.
 
+In a distributed setup, `hostname` alone is insufficient to uniquely identify a host
+(multiple datacenters may have identically-named systems). Use `system_id` as the
+primary unique key for each reporting agent. `system_id` should be assigned at
+configuration time and is immutable; the first report from a `system_id` creates
+the host record.
+
 ```sql
 CREATE TABLE IF NOT EXISTS hosts (
     id          INTEGER PRIMARY KEY,
-    hostname    TEXT    NOT NULL,
+    system_id   TEXT    NOT NULL,   -- unique agent identifier (UUID, hostname+domain, or custom)
+    hostname    TEXT    NOT NULL,   -- human-readable hostname
     platform    TEXT    NOT NULL,   -- 'linux', 'aix', 'darwin', etc. (sys.platform)
     first_seen  REAL    NOT NULL,   -- Unix timestamp
     last_seen   REAL    NOT NULL    -- updated on each collection run
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_hosts_hostname ON hosts (hostname);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hosts_system_id ON hosts (system_id);
+CREATE INDEX IF NOT EXISTS idx_hosts_hostname ON hosts (hostname);
 ```
 
 ---
@@ -191,6 +203,11 @@ CREATE INDEX IF NOT EXISTS idx_disk_total_host_time
 Per-disk stats. One row per disk per collection run.
 AIX-only. Source: `perfstat_disk_t`. Linux uses a separate table — see `disk_devices_linux`.
 
+In a distributed setup, disk names (`hdisk0`, `sda`, etc.) can repeat across
+different monitored systems. The composite key (host_id, name, collected_at)
+ensures uniqueness; additionally, AIX provides device type and adapter information
+that may help identify the same physical device if a system is moved or reconfigured.
+
 ```sql
 CREATE TABLE IF NOT EXISTS disk_devices (
     id              INTEGER PRIMARY KEY,
@@ -249,13 +266,16 @@ All counter fields are cumulative since boot. Sector counts use the kernel's
 logical sector size (512 bytes on most hardware, regardless of physical sector
 size). Tick counts are in milliseconds.
 
-`major`/`minor` are the kernel device numbers. `discard_*` and `flush_*` fields
-are zero on kernels < 4.18 and 5.5 respectively — store them as-is; NULL would
-be misleading since the counter is genuinely zero rather than absent.
+`major`/`minor` are the kernel device numbers. These are stable within a Linux
+instance and combined with `host_id` form a unique device identity across the
+monitoring database. `discard_*` and `flush_*` fields are zero on kernels < 4.18
+and 5.5 respectively — store them as-is; NULL would be misleading since the
+counter is genuinely zero rather than absent.
 
 Device naming conventions seen in the wild: `sda`/`sdb` (SCSI/SATA),
 `nvme0n1`/`nvme0n1p1` (NVMe), `zd0`/`zd16` (ZFS zvols), `md0` (software RAID),
-`dm-0` (device mapper / LVM).
+`dm-0` (device mapper / LVM). Multiple hosts may have identically-named devices
+(e.g., both `sda`); use the composite key (host_id, major, minor) to differentiate.
 
 ```sql
 CREATE TABLE IF NOT EXISTS disk_devices_linux (
@@ -299,6 +319,8 @@ CREATE INDEX IF NOT EXISTS idx_disk_devices_linux_host_time
     ON disk_devices_linux (host_id, collected_at);
 CREATE INDEX IF NOT EXISTS idx_disk_devices_linux_host_name
     ON disk_devices_linux (host_id, name, collected_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_disk_devices_linux_device_identity
+    ON disk_devices_linux (host_id, major, minor, collected_at);
 ```
 
 ---
@@ -311,6 +333,10 @@ adjacent rows at query time.
 
 Linux source: `/proc/net/dev`. AIX source: `perfstat_netinterface_t`.
 Platform-specific columns are NULL on the other platform.
+
+In a distributed setup, interface names (`eth0`, `en0`, etc.) commonly repeat
+across different monitored systems. Use the composite key (host_id, iface,
+collected_at) to differentiate interfaces on different hosts.
 
 ```sql
 CREATE TABLE IF NOT EXISTS net_interfaces (
@@ -364,6 +390,11 @@ unmounted filesystems (e.g. WPAR filesystems that are offline).
 
 `mounted = 1` rows have space stats populated; `mounted = 0` rows have only
 config fields from `/etc/filesystems` (AIX) or `/proc/mounts` (Linux).
+
+In a distributed setup, mountpoints repeat across systems (e.g., `/home` appears
+on every Linux host). Use the composite key (host_id, mountpoint, collected_at)
+to differentiate mountpoints on different hosts. Device names (`/dev/sda1`)
+similarly repeat; use `dev` with `host_id` for disambiguation.
 
 ```sql
 CREATE TABLE IF NOT EXISTS filesystems (
@@ -490,6 +521,89 @@ CREATE TABLE IF NOT EXISTS memory_slabs (
 CREATE INDEX IF NOT EXISTS idx_memory_slabs_host_time
     ON memory_slabs (host_id, collected_at);
 ```
+
+---
+
+## Distributed Monitoring: System Identification
+
+This schema is designed to support a distributed monitoring setup where multiple
+independent systems report metrics to a shared database. The key architectural
+decision is the use of `system_id` in the `hosts` table as the authoritative
+unique identifier for each reporting agent.
+
+### `system_id` Assignment Strategies
+
+`system_id` must be:
+- **Globally unique** — no two reporting agents can have the same `system_id`
+- **Immutable** — once assigned, it should never change (or data continuity breaks)
+- **Resolvable** — the operator should be able to map it back to a physical system
+
+**Recommended strategies:**
+
+1. **UUID (Most robust):** Generate a UUID v4 or v5 at agent initialization; persist
+   to a local config file. Guarantees global uniqueness with no coordination.
+
+2. **`hostname:domain`** (If reliable DNS exists) — E.g., `web01.prod.example.com`.
+   Works if your naming convention guarantees uniqueness within your domain. Fragile
+   if systems are renamed.
+
+3. **`hostname:hwaddr`** — E.g., `web01:00:1a:2b:3c:4d:5e`. Combines hostname for
+   human readability with a hardware address (MAC, BIOS UUID, or `/sys/class/dmi/id/product_uuid`)
+   for uniqueness. Survives hostname changes on the same physical hardware.
+
+4. **Custom identifier** — E.g., a datacenter-assigned agent ID like `dc-us-east-1:rack-42:box-05`.
+   Works well if you have an asset management system that can mint IDs.
+
+### Handling Overlapping Device Names and Mountpoints
+
+Multiple hosts will have:
+- Identically-named block devices (`sda`, `sdb`, `nvme0n1`)
+- Identically-named network interfaces (`eth0`, `lo`, `en0`)
+- Identically-named filesystems and mountpoints (`/`, `/home`, `/var`)
+
+These are disambiguated via composite keys in the schema:
+- `disk_devices_linux`: Use (host_id, major, minor) to uniquely identify a device across the cluster
+- `net_interfaces`: Use (host_id, iface) to uniquely identify an interface
+- `filesystems`: Use (host_id, mountpoint) to uniquely identify a filesystem on a specific host
+
+### Sample Query Patterns
+
+The primary use case is selecting metrics by time range and host(s):
+
+```sql
+-- Memory trend for one host over the last hour
+SELECT collected_at, mem_total, mem_free, mem_available
+FROM memory
+WHERE host_id = 42
+  AND collected_at BETWEEN ? AND ?
+ORDER BY collected_at;
+
+-- Cross-subsystem correlation: CPU vs memory for one host
+-- Works because collected_at is identical across all tables for a given run.
+SELECT c.collected_at, c.user_ticks, c.sys_ticks, m.mem_free
+FROM cpu_stats c
+JOIN memory m ON m.host_id = c.host_id AND m.collected_at = c.collected_at
+WHERE c.host_id = 42
+  AND c.collected_at BETWEEN ? AND ?
+ORDER BY c.collected_at;
+
+-- Filesystem usage across multiple hosts
+SELECT h.system_id, h.hostname, f.mountpoint, f.pct_used, f.collected_at
+FROM filesystems f
+JOIN hosts h ON h.id = f.host_id
+WHERE h.system_id IN (?, ?, ?)
+  AND f.collected_at BETWEEN ? AND ?
+  AND f.mounted = 1
+ORDER BY h.hostname, f.mountpoint, f.collected_at;
+```
+
+### Retention and Cleanup Considerations
+
+In a distributed setup with many hosts:
+- Row count grows as O(hosts × samples × metrics)
+- Consider archiving old data or partitioning by time
+- Use `host_id` indexes to quickly filter to a single host's data
+- Use `collected_at` indexes to efficiently query time ranges
 
 ---
 

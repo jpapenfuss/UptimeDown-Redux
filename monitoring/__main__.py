@@ -9,16 +9,21 @@
 #
 # Adding a new platform (e.g. darwin, freebsd):
 #   1. Add an elif branch in the import block below.
-#   2. Add a matching elif branch in main() with its gather calls and JSON keys.
+#   2. Add a matching elif branch in collect_once() with its gather calls and JSON keys.
+#
+# Daemon mode: Set run_interval and optionally max_iterations in config.ini [daemon] section.
 import sys
 sys.dont_write_bytecode = True
 import time
-timestart = time.time()
+import signal
 
 from log_setup import log_setup
+from identity import get_system_id
+from config import Config
 
 # sys.platform values: "linux", "aix", "darwin", "freebsd7" ... "freebsd14", etc.
 _PLATFORM = sys.platform
+_SYSTEM_ID = get_system_id()
 
 if _PLATFORM == "aix":
     from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory, aix_network
@@ -28,9 +33,15 @@ else:
     raise RuntimeError(f"Unsupported platform: {_PLATFORM!r}")
 
 
-def main():
-    logger = log_setup()
-    import json
+def collect_once(logger, json_module):
+    """Collect metrics once and return (json_string, timings_dict)."""
+    timestart = time.time()
+
+    # Single timestamp for this collection run. All data tables in the database
+    # use this value as collected_at, ensuring cross-subsystem joins work on
+    # exact equality. Rounded to milliseconds to survive JSON round-tripping
+    # without float-precision drift.
+    collected_at = round(time.time(), 3)
 
     if _PLATFORM == "aix":
         timebeforecpu = time.time()
@@ -42,7 +53,9 @@ def main():
         timeafterfs = time.time()
 
         timebeforejson = time.time()
-        jsonout = json.dumps({
+        jsonout = json_module.dumps({
+            "system_id":   _SYSTEM_ID,
+            "collected_at": collected_at,
             "cpustats":    mycpu.cpustat_values,
             "disks":       mydisk.blockdevices,
             "disk_total":  mydisk.disk_total,
@@ -53,14 +66,15 @@ def main():
         timeafterjson = time.time()
 
         timeend = time.time()
-        print(f"Time between start and finish: \t\t\t\t{timeend - timestart}")
-        print(f"Time from start to before gathering: \t\t\t{timebeforecpu - timestart}")
-        print(f"Time from start to end of CPU Stat: \t\t\t{mycpu.cpustat_values['_time'] - timestart}")
-        print(f"Time from end of CPU to end of Disk: \t\t\t{mydisk.disk_total['_time'] - mycpu.cpustat_values['_time']}")
-        print(f"Time from end of Disk to end of FS: \t\t\t{myfs.filesystems['_time'] - mydisk.disk_total['_time']}")
-        print(f"Time from end of FS to end of Memory: \t\t\t{mymemory.stats['memory']['_time'] - myfs.filesystems['_time']}")
-        print(f"Time from start to end of gathering stats: \t\t{timeafterfs - timebeforecpu}")
-        print(f"Time to generate json: \t\t\t\t\t{timeafterjson - timebeforejson}")
+        timings = {
+            'total': timeend - timestart,
+            'startup': timebeforecpu - timestart,
+            'cpu': mycpu.cpustat_values['_time'] - timestart,
+            'disk': mydisk.disk_total['_time'] - mycpu.cpustat_values['_time'],
+            'fs': myfs.filesystems['_time'] - mydisk.disk_total['_time'],
+            'memory': mymemory.stats['memory']['_time'] - myfs.filesystems['_time'],
+            'json': timeafterjson - timebeforejson,
+        }
 
     elif _PLATFORM == "linux":
         timebeforecpu = time.time()
@@ -72,7 +86,9 @@ def main():
         timeafterfs = time.time()
 
         timebeforejson = time.time()
-        jsonout = json.dumps({
+        jsonout = json_module.dumps({
+            "system_id":   _SYSTEM_ID,
+            "collected_at": collected_at,
             "cpustats":    mycpu.cpustat_values,
             "cpuinfo":     mycpu.cpuinfo_values,
             "disks":       mydisk.blockdevices,
@@ -83,23 +99,86 @@ def main():
         timeafterjson = time.time()
 
         timeend = time.time()
-        print(f"Time between start and finish: \t\t\t\t{timeend - timestart}")
-        print(f"Time from start to before gathering: \t\t\t{timebeforecpu - timestart}")
-        print(f"Time from start to end of CPU Stat: \t\t\t{mycpu.cpustat_values['_time'] - timestart}")
-        print(f"Time from end of CPU Info to end of CPU Stat: \t\t{mycpu.cpustat_values['_time'] - mycpu.cpuinfo_values['_time']}")
-        print(f"Time from end of CPU Info to end of Memory: \t\t{mymemory.stats['memory']['_time'] - mycpu.cpuinfo_values['_time']}")
+        slabs_time = None
         if mymemory.stats["slabs"] is not False:
-            print(f"Time from end of Memory to end of Slabs: \t\t{mymemory.stats['slabs']['_time'] - mymemory.stats['memory']['_time']}")
+            slabs_time = mymemory.stats['slabs']['_time'] - mymemory.stats['memory']['_time']
+            fs_start_time = mymemory.stats['slabs']['_time']
+        else:
+            fs_start_time = mymemory.stats['memory']['_time']
+
+        timings = {
+            'total': timeend - timestart,
+            'startup': timebeforecpu - timestart,
+            'cpu': mycpu.cpustat_values['_time'] - timestart,
+            'cpuinfo': mycpu.cpuinfo_values['_time'] - mycpu.cpustat_values['_time'],
+            'memory': mymemory.stats['memory']['_time'] - mycpu.cpuinfo_values['_time'],
+            'slabs': slabs_time,
+            'fs': myfs.filesystems['_time'] - fs_start_time,
+            'json': timeafterjson - timebeforejson,
+        }
+
+    return jsonout, timings
+
+
+def print_timings(timings):
+    """Print collection timings."""
+    print(f"Time between start and finish: \t\t\t\t{timings['total']}")
+    print(f"Time from start to before gathering: \t\t\t{timings['startup']}")
+    print(f"Time from start to end of CPU Stat: \t\t\t{timings['cpu']}")
+
+    if _PLATFORM == "aix":
+        print(f"Time from end of CPU to end of Disk: \t\t\t{timings['disk']}")
+        print(f"Time from end of Disk to end of FS: \t\t\t{timings['fs']}")
+        print(f"Time from end of FS to end of Memory: \t\t\t{timings['memory']}")
+    else:  # linux
+        print(f"Time from end of CPU Info to end of CPU Stat: \t\t{timings['cpuinfo']}")
+        print(f"Time from end of CPU Info to end of Memory: \t\t{timings['memory']}")
+        if timings['slabs'] is not None:
+            print(f"Time from end of Memory to end of Slabs: \t\t{timings['slabs']}")
         else:
             print(f"Time from end of Memory to end of Slabs: \t\tskipped (slabinfo unreadable)")
-        if mymemory.stats["slabs"] is not False:
-            print(f"Time from end of Slabs to end of FS: \t\t\t{myfs.filesystems['_time'] - mymemory.stats['slabs']['_time']}")
-        else:
-            print(f"Time from end of Memory to end of FS: \t\t\t{myfs.filesystems['_time'] - mymemory.stats['memory']['_time']}")
-        print(f"Time from start to end of gathering stats: \t\t{timeafterfs - timebeforecpu}")
-        print(f"Time to generate json: \t\t\t\t\t{timeafterjson - timebeforejson}")
+        print(f"Time from end of Slabs to end of FS: \t\t\t{timings['fs']}")
 
-    print(jsonout)
+    print(f"Time to generate json: \t\t\t\t\t{timings['json']}")
+
+
+def main():
+    logger = log_setup()
+    import json
+    cfg = Config()
+
+    # Flag for graceful shutdown on SIGTERM/SIGINT
+    should_exit = False
+
+    def signal_handler(signum, frame):
+        nonlocal should_exit
+        should_exit = True
+
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
+
+    iteration = 0
+
+    while True:
+        iteration += 1
+
+        # Collect metrics
+        jsonout, timings = collect_once(logger, json)
+
+        # Print diagnostics and JSON
+        print_timings(timings)
+        print(jsonout)
+
+        # Check if we should exit
+        if cfg.max_iterations is not None and iteration >= cfg.max_iterations:
+            break
+
+        if should_exit:
+            break
+
+        # Sleep until next collection (but be responsive to signals)
+        print(f"\nNext collection in {cfg.run_interval} seconds...", file=sys.stderr)
+        time.sleep(cfg.run_interval)
 
 
 if __name__ == "__main__":
