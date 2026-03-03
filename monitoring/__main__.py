@@ -20,7 +20,7 @@ import os
 
 from log_setup import log_setup
 from identity import get_system_id
-from config import Config
+from config import Config, create_argument_parser
 
 # sys.platform values: "linux", "aix", "darwin", "freebsd7" ... "freebsd14", etc.
 _PLATFORM = sys.platform
@@ -151,9 +151,16 @@ def print_timings(timings):
 
 
 def main():
+    parser = create_argument_parser()
+    args = parser.parse_args()
+
+    # Handle --once shorthand: sets max_iterations to 1
+    if args.once:
+        args.max_iterations = 1
+
     logger = log_setup()
     import json
-    cfg = Config()
+    cfg = Config(args)
 
     iteration = 0
 
