@@ -57,7 +57,7 @@ class AixFilesystems:
                 opts[token] = True
         return opts
 
-    def get_filesystems(self):
+    def get_filesystems(self, _time=None):
         """Parse /etc/filesystems and enrich with statvfs where mounted.
 
         /etc/filesystems stanza format (AIX-specific):
@@ -159,14 +159,15 @@ class AixFilesystems:
 
             filesystems[mountpoint] = entry
 
-        filesystems["_time"] = time.time()
+        filesystems["_time"] = _time if _time is not None else time.time()
         logger.debug("get_filesystems: total=%d mounted=%d unmounted=%d",
                      len(config), nmounted, nunmounted)
         return filesystems
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Parse /etc/filesystems and probe each mountpoint via statvfs."""
         logger.debug("AixFilesystems: initializing")
+        self._ts = _time if _time is not None else time.time()
         self.filesystems = self.get_filesystems()
         # Count mounted filesystems, excluding the _time metadata key.
         nmounted = sum(1 for k, v in self.filesystems.items()

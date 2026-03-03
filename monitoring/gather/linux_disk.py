@@ -97,7 +97,7 @@ class Disk:
     sys_dev_block_path = "/sys/dev/block/"
     proc_diskstats_path = "/proc/diskstats"
 
-    def get_devices(self):
+    def get_devices(self, _time=None):
         """Parse /proc/diskstats and return a dict of per-device I/O counters.
 
         Each entry is keyed by device name (e.g. "sda", "nvme0n1") and contains
@@ -123,7 +123,7 @@ class Disk:
             logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
             return None
 
-        ts = time.time()
+        ts = _time if _time is not None else time.time()
         nskipped = 0
         with open(self.proc_diskstats_path, "r") as reader:
             # Example line:
@@ -182,7 +182,8 @@ class Disk:
         Sets self.blockdevices to the resulting dict.
         """
         logger.debug("get_disks: starting collection")
-        devs = self.get_devices()
+        ts = getattr(self, '_ts', None)
+        devs = self.get_devices(ts)
         if devs is None:
             logger.error("get_disks: get_devices() returned None, skipping")
             return
@@ -197,8 +198,9 @@ class Disk:
         self.blockdevices = devs
         logger.debug("get_disks: collected stats for %d devices", len(devs))
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Initialise blockdevices to {} and call get_disks() to populate it."""
+        self._ts = _time if _time is not None else time.time()
         self.blockdevices = {}
         self.get_disks()
 

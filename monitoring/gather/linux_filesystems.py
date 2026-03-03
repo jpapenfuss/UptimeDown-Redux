@@ -94,16 +94,17 @@ class Filesystems:
         """
         mtab_path = "/etc/mtab"
         proc_mounts_path = "/proc/mounts"
+        ts = getattr(self, '_ts', None)
 
         mtab_access = util.caniread(mtab_path)
         proc_mounts_access = util.caniread(proc_mounts_path)
 
         if proc_mounts_access:
             logger.debug("Can read %s, using that for mounts.", proc_mounts_path)
-            filesystems = self.get_filesystems_from_proc(proc_mounts_path)
+            filesystems = self.get_filesystems_from_proc(proc_mounts_path, ts)
         elif mtab_access:
             logger.warning("Failed through from proc, but can read %s, using that for mounts.", mtab_path)
-            filesystems = self.get_filesystems_from_proc(mtab_path)
+            filesystems = self.get_filesystems_from_proc(mtab_path, ts)
         else:
             raise RuntimeError(f"Can't open either {proc_mounts_path} or {mtab_path} for reading.")
 
@@ -157,7 +158,7 @@ class Filesystems:
             raise RuntimeError(f"ZeroDivisionError on f_blocks for a mount with f_blocks != 0")
         return fs_stats
 
-    def get_filesystems_from_proc(self, proc_mounts_path):
+    def get_filesystems_from_proc(self, proc_mounts_path, _time=None):
         """Read and parse a /proc/mounts-format file into the filesystems dict.
 
         Each non-ignored mount is processed by process_mount(), which calls
@@ -177,7 +178,7 @@ class Filesystems:
                 if filesystem:
                     fs.update(filesystem)
                 mount_line = str(reader.readline()).strip()
-        fs["_time"] = time.time()
+        fs["_time"] = _time if _time is not None else time.time()
         nmounts = len(fs) - 1  # exclude _time
         logger.debug("get_filesystems_from_proc: collected %d filesystems", nmounts)
         return fs
@@ -230,12 +231,13 @@ class Filesystems:
                      mount[1], mount[0], mount[2], fs_stats["pct_used"])
         return {mount[1]: entry}
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Parse /proc/mounts (or /etc/mtab) and statvfs each mounted filesystem.
 
         fs_reject accumulates mountpoints with no block storage so they can be
         skipped without a redundant statvfs() call on future UpdateValues() calls.
         """
+        self._ts = _time if _time is not None else time.time()
         self.fs_reject = []
         self.filesystems = self.get_filesystems()
 

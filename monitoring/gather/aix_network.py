@@ -68,7 +68,7 @@ class perfstat_netinterface_t(ctypes.Structure):
     ]
 
 
-def get_interfaces():
+def get_interfaces(_time=None):
     """Call perfstat_netinterface() and return per-interface stats as a dict.
 
     Uses the standard two-call perfstat enumeration pattern:
@@ -130,7 +130,7 @@ def get_interfaces():
         return {}
 
     interfaces = {}
-    ts = time.time()
+    ts = _time if _time is not None else time.time()
     for i in range(ret):
         buf = iface_buf[i]
         entry = {
@@ -172,11 +172,13 @@ class AixNetwork:
     def UpdateValues(self):
         """Refresh interfaces by calling perfstat_netinterface() again."""
         logger.debug("AixNetwork.UpdateValues: starting")
-        self.interfaces = get_interfaces()
+        ts = getattr(self, '_ts', None)
+        self.interfaces = get_interfaces(ts)
         logger.debug("AixNetwork.UpdateValues: complete (%d interfaces)", len(self.interfaces))
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect interface stats."""
+        self._ts = _time if _time is not None else time.time()
         logger.debug("AixNetwork: initializing")
         self.UpdateValues()
 

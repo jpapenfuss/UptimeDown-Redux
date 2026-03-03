@@ -48,7 +48,7 @@ class Memory:
         s = re.sub(r'([A-Z])([A-Z][a-z])', r'\1_\2', s)
         return s.lower()
 
-    def GetMeminfo(self):
+    def GetMeminfo(self, _time=None):
         """Parse /proc/meminfo and return a dict of memory statistics.
 
         All values with a unit multiplier (kB) are converted to bytes via
@@ -86,7 +86,7 @@ class Memory:
                     line[1] = util.tobytes(line[1], unit)
                 meminfo_values[key] = line[1]
                 meminfo_line = str(reader.readline()).strip()
-        meminfo_values["_time"] = time.time()
+        meminfo_values["_time"] = _time if _time is not None else time.time()
         nfields = len(meminfo_values) - 1  # exclude _time
         logger.debug("GetMeminfo: parsed %d fields", nfields)
         logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
@@ -100,7 +100,7 @@ class Memory:
                      meminfo_values.get("buffers", 0))
         return meminfo_values
 
-    def GetSlabinfo(self):
+    def GetSlabinfo(self, _time=None):
         """Parse /proc/slabinfo and return a dict of kernel slab allocator stats.
 
         /proc/slabinfo requires root. Returns False (not an error) if unreadable
@@ -160,7 +160,7 @@ class Memory:
                     )
                 )
                 slabline = reader.readline()
-        slabs["_time"] = time.time()
+        slabs["_time"] = _time if _time is not None else time.time()
         nslabs = len(slabs) - 1  # exclude _time
         logger.debug("GetSlabinfo: parsed %d slab entries", nslabs)
         # Log only the top 5 slabs by active_objs — there can be hundreds of
@@ -173,12 +173,13 @@ class Memory:
             logger.debug("GetSlabinfo:   %s active_objs=%d", name, active)
         return slabs
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Read /proc/meminfo and /proc/slabinfo and populate self.stats."""
         logger.debug("Memory: initializing")
+        ts = _time if _time is not None else time.time()
         self.stats = {}
-        self.stats["memory"] = self.GetMeminfo()
-        self.stats["slabs"] = self.GetSlabinfo()
+        self.stats["memory"] = self.GetMeminfo(ts)
+        self.stats["slabs"] = self.GetSlabinfo(ts)
         logger.debug("Memory: initialized (slabs=%s)",
                      "collected" if self.stats["slabs"] is not False else "unavailable")
 
