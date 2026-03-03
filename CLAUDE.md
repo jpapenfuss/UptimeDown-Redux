@@ -76,7 +76,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - Added or removed a file? Add or remove its section.
 - Changed behavior that affects output format? Update the relevant output schema section.
 
-**When to update**: Update the reference **before committing**. A git pre-commit hook will prevent commits where code changed but the reference didn't.
+**When to update**: Update the reference **before committing**. Forgetting to do this defeats the purpose of the reference and makes future sessions unreliable.
 
 **How to update**: Edit `.claude/projects/-Volumes-...-UptimeDown/memory/project_reference.md` directly. The reference is organized by file (§ numbering), so find the relevant section and update it. Keep it accurate.
 
