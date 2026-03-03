@@ -60,10 +60,10 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - Every gatherer attaches a `_time` key (via `time.time()`) to track when data was captured.
 - Logging uses the `"monitoring"` logger name throughout, configured in `monitoring/log_setup.py` (DEBUG to `monitoring.log`, ERROR to stderr).
 - Optional log file — if current directory is not writable, logging silently falls back to stderr.
-- `config.ini` controls daemon mode (`run_interval`, `max_iterations`), logging level, and output behavior.
+- `config.ini` controls daemon mode (`run_interval`, `max_iterations`). `log_level = DEBUG` gates JSON file dumps only — it does not change logger verbosity. Logger levels are hardcoded in `log_setup.py` (file: DEBUG, stderr: ERROR).
 - System ID tracking via `identity.py` — each run gets a unique system_id in JSON output (helps identify which box the metrics came from).
 - JSON output includes a `collected_at` timestamp (rounded to milliseconds for consistency).
-- When DEBUG logging is enabled, JSON is also written to a dated file in the current directory (`<uuid>-<timestamp>.json`).
+- When `log_level = DEBUG` in config.ini, JSON is also written to a dated file in the current directory (`<uuid>-<timestamp>.json`).
 - Per-CPU enumeration tracking: AIX includes `ncpus_enumerated` in `cpustats` to detect SMT/core count changes.
 
 Before running any AIX-specific command, verify it's valid for AIX (not a Linux/GNU-specific variant). For example, use smtctl not chdev for SMT, and avoid grep -P. List the commands you plan to run and let me confirm before executing.

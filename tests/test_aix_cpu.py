@@ -123,7 +123,8 @@ class TestAixCpu(unittest.TestCase):
 
     def test_init_populates_cpustat_values(self):
         fake = {"user_ticks": 100, "_time": 1.0}
-        with patch("aix_cpu.get_cpu_total", return_value=fake):
+        with patch("aix_cpu.get_cpu_total", return_value=fake), \
+             patch("aix_cpu.get_cpus", return_value={}):
             obj = AixCpu()
         self.assertEqual(obj.cpustat_values, fake)
 
@@ -131,7 +132,8 @@ class TestAixCpu(unittest.TestCase):
         obj = AixCpu.__new__(AixCpu)
         obj.cpustat_values = {}
         new_data = {"user_ticks": 999, "_time": 2.0}
-        with patch("aix_cpu.get_cpu_total", return_value=new_data):
+        with patch("aix_cpu.get_cpu_total", return_value=new_data), \
+             patch("aix_cpu.get_cpus", return_value={}):
             obj.UpdateValues()
         self.assertEqual(obj.cpustat_values["user_ticks"], 999)
 

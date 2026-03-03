@@ -39,6 +39,5 @@ def log_setup():
         # Can't write to current directory; skip file logging
         pass
 
-    # add the stream handler to the logger
     logger.addHandler(ch)
     return logger
