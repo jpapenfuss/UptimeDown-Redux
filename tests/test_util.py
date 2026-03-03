@@ -1,8 +1,10 @@
-"""Tests for monitoring/gather/util.py — caniread() and tobytes()."""
+"""Tests for monitoring/gather/util.py — caniread(), tobytes(), and IMDS helpers."""
+import io
 import os
+import socket
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "monitoring", "gather"))
 import util
@@ -98,6 +100,101 @@ class TestTobytes(unittest.TestCase):
 
     def test_zero_value(self):
         self.assertEqual(util.tobytes(0, "KiB"), 0)
+
+
+class TestImdsReachable(unittest.TestCase):
+    """Verify imds_reachable() returns correct booleans based on TCP probe outcome."""
+
+    def test_returns_true_when_connection_succeeds(self):
+        mock_sock = MagicMock()
+        with patch("socket.create_connection", return_value=mock_sock):
+            self.assertTrue(util.imds_reachable())
+
+    def test_closes_socket_on_success(self):
+        mock_sock = MagicMock()
+        with patch("socket.create_connection", return_value=mock_sock):
+            util.imds_reachable()
+        mock_sock.close.assert_called_once()
+
+    def test_returns_false_on_timeout(self):
+        with patch("socket.create_connection", side_effect=socket.timeout):
+            self.assertFalse(util.imds_reachable())
+
+    def test_returns_false_on_connection_refused(self):
+        with patch("socket.create_connection", side_effect=ConnectionRefusedError):
+            self.assertFalse(util.imds_reachable())
+
+    def test_returns_false_on_os_error(self):
+        with patch("socket.create_connection", side_effect=OSError):
+            self.assertFalse(util.imds_reachable())
+
+    def test_uses_supplied_ip_and_port(self):
+        mock_sock = MagicMock()
+        with patch("socket.create_connection", return_value=mock_sock) as mock_conn:
+            util.imds_reachable(ip="1.2.3.4", port=8080, timeout=0.1)
+        mock_conn.assert_called_once_with(("1.2.3.4", 8080), timeout=0.1)
+
+
+class TestImdsGet(unittest.TestCase):
+    """Verify imds_get() makes a GET request and returns the response body."""
+
+    def _mock_urlopen(self, body):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = body.encode('utf-8')
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return patch("urllib.request.urlopen", return_value=mock_resp)
+
+    def test_returns_response_body(self):
+        with self._mock_urlopen("hello"):
+            result = util.imds_get("169.254.169.254", "/latest/meta-data/")
+        self.assertEqual(result, "hello")
+
+    def test_returns_none_on_exception(self):
+        with patch("urllib.request.urlopen", side_effect=OSError):
+            result = util.imds_get("169.254.169.254", "/latest/meta-data/")
+        self.assertIsNone(result)
+
+    def test_passes_headers(self):
+        with self._mock_urlopen("ok") as mock_urlopen:
+            util.imds_get("169.254.169.254", "/path",
+                          headers={"X-aws-ec2-metadata-token": "tok"})
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.get_header("X-aws-ec2-metadata-token"), "tok")
+
+
+class TestImdsPut(unittest.TestCase):
+    """Verify imds_put() makes a PUT request with an empty body."""
+
+    def _mock_urlopen(self, body):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = body.encode('utf-8')
+        mock_resp.__enter__ = lambda s: s
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        return patch("urllib.request.urlopen", return_value=mock_resp)
+
+    def test_returns_response_body(self):
+        with self._mock_urlopen("the-token"):
+            result = util.imds_put("169.254.169.254", "/latest/api/token",
+                                   headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"})
+        self.assertEqual(result, "the-token")
+
+    def test_returns_none_on_exception(self):
+        with patch("urllib.request.urlopen", side_effect=OSError):
+            result = util.imds_put("169.254.169.254", "/latest/api/token")
+        self.assertIsNone(result)
+
+    def test_request_method_is_put(self):
+        with self._mock_urlopen("tok") as mock_urlopen:
+            util.imds_put("169.254.169.254", "/latest/api/token")
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.get_method(), "PUT")
+
+    def test_request_has_empty_body(self):
+        with self._mock_urlopen("tok") as mock_urlopen:
+            util.imds_put("169.254.169.254", "/latest/api/token")
+        req = mock_urlopen.call_args[0][0]
+        self.assertEqual(req.data, b'')
 
 
 if __name__ == "__main__":
