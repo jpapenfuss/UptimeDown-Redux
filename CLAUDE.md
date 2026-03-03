@@ -66,5 +66,19 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - When `log_level = DEBUG` in config.ini, JSON is also written to a dated file in the current directory (`<uuid>-<timestamp>.json`).
 - Per-CPU enumeration tracking: AIX includes `ncpus_enumerated` in `cpustats` to detect SMT/core count changes.
 
+## Documentation Maintenance
+
+**Requirement**: When you modify any Python file in `monitoring/` or `tests/`, you MUST update the corresponding section in `.claude/projects/-Volumes-...-UptimeDown/memory/project_reference.md`.
+
+**What to update**:
+- Changed a function signature or method? Update it in the reference.
+- Added a new class, constant, or data structure key? Add it to the reference.
+- Added or removed a file? Add or remove its section.
+- Changed behavior that affects output format? Update the relevant output schema section.
+
+**When to update**: Update the reference **before committing**. A git pre-commit hook will prevent commits where code changed but the reference didn't.
+
+**How to update**: Edit `.claude/projects/-Volumes-...-UptimeDown/memory/project_reference.md` directly. The reference is organized by file (§ numbering), so find the relevant section and update it. Keep it accurate.
+
 Before running any AIX-specific command, verify it's valid for AIX (not a Linux/GNU-specific variant). For example, use smtctl not chdev for SMT, and avoid grep -P. List the commands you plan to run and let me confirm before executing.
 
