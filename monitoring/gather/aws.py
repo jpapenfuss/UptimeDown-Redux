@@ -422,7 +422,9 @@ class AwsCloud:
             logger.debug("get_metadata: IMDS not reachable, not on EC2")
             return False
 
-        ts = time.time()
+        ts = getattr(self, '_ts', None)
+        if ts is None:
+            ts = time.time()
 
         token = _get_token()
         if token is None:
@@ -514,8 +516,9 @@ class AwsCloud:
         )
         return result
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Probe EC2 IMDS and populate self.metadata."""
+        self._ts = _time if _time is not None else time.time()
         self.metadata = self.get_metadata()
 
 

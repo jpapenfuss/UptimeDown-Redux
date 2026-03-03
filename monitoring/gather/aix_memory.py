@@ -67,7 +67,7 @@ class perfstat_memory_total_t(ctypes.Structure):
     ]
 
 
-def get_memory_total():
+def get_memory_total(_time=None):
     """Call perfstat_memory_total() and return a normalized memory stats dict.
 
     Page-valued fields are converted to bytes (pages * PAGE_SIZE = pages * 4096).
@@ -115,6 +115,7 @@ def get_memory_total():
         return False
 
     p = PAGE_SIZE
+    _ts = _time if _time is not None else time.time()
     result = {
         # --- Normalized keys (shared with Linux) ---
         "mem_total":    buf.real_total   * p,
@@ -144,7 +145,7 @@ def get_memory_total():
         "cycles":       buf.cycles,
         "pgsteals":     buf.pgsteals,
 
-        "_time": time.time(),
+        "_time": _ts,
     }
 
     gb = 1024 ** 3
@@ -173,15 +174,17 @@ class AixMemory:
     def UpdateValues(self):
         """Refresh stats by calling perfstat_memory_total() again."""
         logger.debug("AixMemory.UpdateValues: starting")
+        ts = getattr(self, '_ts', None)
         self.stats = {
-            "memory": get_memory_total(),
+            "memory": get_memory_total(ts),
             "slabs":  None,
         }
         logger.debug("AixMemory.UpdateValues: complete (ok=%s)",
                      self.stats["memory"] is not False)
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect memory stats."""
+        self._ts = _time if _time is not None else time.time()
         logger.debug("AixMemory: initializing")
         self.UpdateValues()
 

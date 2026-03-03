@@ -224,7 +224,7 @@ class TestGetFilesystems(unittest.TestCase):
         with patch("monitoring.gather.util.caniread", side_effect=lambda p: True), \
              patch.object(fs, "get_filesystems_from_proc", return_value={}) as mock_gffp:
             fs.get_filesystems()
-            mock_gffp.assert_called_once_with("/proc/mounts")
+            mock_gffp.assert_called_once_with("/proc/mounts", None)
 
     def test_falls_back_to_mtab(self):
         fs = Filesystems.__new__(Filesystems)
@@ -234,7 +234,7 @@ class TestGetFilesystems(unittest.TestCase):
         with patch("monitoring.gather.util.caniread", side_effect=caniread_side), \
              patch.object(fs, "get_filesystems_from_proc", return_value={}) as mock_gffp:
             fs.get_filesystems()
-            mock_gffp.assert_called_once_with("/etc/mtab")
+            mock_gffp.assert_called_once_with("/etc/mtab", None)
 
     def test_raises_when_both_unreadable(self):
         fs = Filesystems.__new__(Filesystems)

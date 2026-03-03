@@ -166,7 +166,7 @@ def _load_lib():
     return ctypes.CDLL("libperfstat.a(shr_64.o)")
 
 
-def get_disk_total(lib):
+def get_disk_total(lib, _time=None):
     """Call perfstat_disk_total() and return aggregate disk stats as a dict.
 
     Passes count=1 and a single-struct buffer. The first argument (id) is NULL
@@ -198,7 +198,7 @@ def get_disk_total(lib):
     result["ndisks"]  = result.pop("number")   # 'number' is ambiguous
     result["size_mb"] = result.pop("size")      # clarify units (MB)
     result["free_mb"] = result.pop("free")
-    result["_time"] = time.time()
+    result["_time"] = _time if _time is not None else time.time()
 
     logger.debug("get_disk_total: ndisks=%d size_mb=%d free_mb=%d xfers=%d",
                  result["ndisks"], result["size_mb"], result["free_mb"], result["xfers"])
@@ -207,7 +207,7 @@ def get_disk_total(lib):
     return result
 
 
-def get_disks(lib):
+def get_disks(lib, _time=None):
     """Call perfstat_disk() to enumerate all per-disk stats and return them as a dict.
 
     Uses the standard two-call perfstat enumeration pattern:
@@ -259,7 +259,7 @@ def get_disks(lib):
         return {}
 
     disks = {}
-    ts = time.time()
+    ts = _time if _time is not None else time.time()
     for i in range(ret):
         d = _struct_to_dict(disk_buf[i], perfstat_disk_t)
         # Rename ambiguous size/free to schema column names (units: MB).
@@ -286,12 +286,13 @@ class AixDisk:
                         each entry from perfstat_disk_t with '_time'.
     """
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Load libperfstat once and collect both aggregate and per-disk stats."""
         logger.debug("AixDisk: initializing")
+        ts = _time if _time is not None else time.time()
         lib = _load_lib()
-        self.disk_total = get_disk_total(lib)
-        self.blockdevices = get_disks(lib)
+        self.disk_total = get_disk_total(lib, ts)
+        self.blockdevices = get_disks(lib, ts)
         logger.debug("AixDisk: initialized (disk_total ok=%s, blockdevices=%d)",
                      self.disk_total is not False, len(self.blockdevices))
 

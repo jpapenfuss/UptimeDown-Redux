@@ -63,7 +63,7 @@ class Cpu:
     # Fields whose values are space-separated lists.
     LIST_STATS = ["flags", "bugs"]
 
-    def GetCpuinfo(self):
+    def GetCpuinfo(self, _time=None):
         """Parse /proc/cpuinfo and return a dict of hardware info for cpu0.
 
         Reads only up to the first blank line, which terminates the cpu0 stanza.
@@ -101,7 +101,7 @@ class Cpu:
                 else:
                     cpuinfo_values[split[0]] = split[1]
                 cpuinfo_line = str(reader.readline()).strip()
-        cpuinfo_values["_time"] = time.time()
+        cpuinfo_values["_time"] = _time if _time is not None else time.time()
         nfields = len(cpuinfo_values) - 1  # exclude _time
         logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
         logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
@@ -152,7 +152,7 @@ class Cpu:
                      nirq_types, ncpus)
         return cpustats_values
 
-    def GetCpuProcStats(self):
+    def GetCpuProcStats(self, _time=None):
         """Parse /proc/stat and return a dict of per-core counters and system-wide stats.
 
         Each cpu/cpuN line becomes a sub-dict keyed by the CPU name, with fields
@@ -212,7 +212,7 @@ class Cpu:
                         cpustats_values[key] = split
                 stat_line = str(reader.readline()).strip()
 
-        cpustats_values["_time"] = time.time()
+        cpustats_values["_time"] = _time if _time is not None else time.time()
 
         # Promote aggregate CPU row's tick counters to top-level schema column names
         # so Linux and AIX rows share the same keys in the cpu_stats table.
@@ -247,12 +247,14 @@ class Cpu:
     def UpdateValues(self):
         """Refresh both cpuinfo_values and cpustat_values from /proc."""
         logger.debug("Cpu.UpdateValues: starting")
-        self.cpuinfo_values = self.GetCpuinfo()
-        self.cpustat_values = self.GetCpuProcStats()
+        ts = getattr(self, '_ts', None)
+        self.cpuinfo_values = self.GetCpuinfo(ts)
+        self.cpustat_values = self.GetCpuProcStats(ts)
         logger.debug("Cpu.UpdateValues: complete")
 
-    def __init__(self):
+    def __init__(self, _time=None):
         # Populate both attributes immediately on instantiation.
+        self._ts = _time if _time is not None else time.time()
         logger.debug("Cpu: initializing")
         self.UpdateValues()
 

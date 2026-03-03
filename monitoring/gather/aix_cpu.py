@@ -234,7 +234,7 @@ def _load_libperfstat():
     return ctypes.CDLL("libperfstat.a(shr_64.o)")
 
 
-def get_cpus():
+def get_cpus(_time=None):
     """Enumerate per-CPU statistics via perfstat_cpu() and return as a dict.
 
     Calls perfstat_cpu() twice: first to query the count of CPUs, then to
@@ -287,6 +287,9 @@ def get_cpus():
         logger.error(f"perfstat_cpu enumeration returned {ret}, expected {ncpus}")
         return False
 
+    # Capture _time once before the loop — all CPUs share the same timestamp
+    ts = _time if _time is not None else time.time()
+
     # Convert to dict keyed by CPU name
     result = {}
     for i in range(ncpus):
@@ -314,7 +317,7 @@ def get_cpus():
                 # Keep all numeric fields as-is
                 cpu_dict[field_name] = val
 
-        cpu_dict["_time"] = time.time()
+        cpu_dict["_time"] = ts
         result[cpu_name] = cpu_dict
 
     logger.debug("get_cpus: enumerated %d CPUs", len(result))
@@ -324,7 +327,7 @@ def get_cpus():
     return result
 
 
-def get_cpu_total():
+def get_cpu_total(_time=None):
     """Call perfstat_cpu_total() and return the result as a plain dict.
 
     Calls with count=1 to fill a single perfstat_cpu_total_t buffer.
@@ -387,7 +390,7 @@ def get_cpu_total():
     raw["loadavg_15"]    = la[2]
     result = raw
 
-    result["_time"] = time.time()
+    result["_time"] = _time if _time is not None else time.time()
 
     logger.debug("get_cpu_total: description=%r ncpus=%d processor_hz=%d",
                  result.get("description"), result.get("ncpus"), result.get("processor_hz"))
@@ -432,13 +435,15 @@ class AixCpu:
     def UpdateValues(self):
         """Refresh cpustat_values and cpus by calling perfstat functions again."""
         logger.debug("AixCpu.UpdateValues: starting")
-        self.cpustat_values = get_cpu_total()
-        self.cpus = get_cpus()
+        ts = getattr(self, '_ts', None)
+        self.cpustat_values = get_cpu_total(ts)
+        self.cpus = get_cpus(ts)
         logger.debug("AixCpu.UpdateValues: complete (total_ok=%s, cpus_ok=%s)",
                      self.cpustat_values is not False, self.cpus is not False)
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect CPU stats."""
+        self._ts = _time if _time is not None else time.time()
         logger.debug("AixCpu: initializing")
         self.UpdateValues()
 

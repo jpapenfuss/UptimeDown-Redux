@@ -56,7 +56,7 @@ class Network:
 
     proc_net_dev_path = "/proc/net/dev"
 
-    def get_interfaces(self):
+    def get_interfaces(self, _time=None):
         """Parse /proc/net/dev and return a dict of per-interface counters.
 
         Each entry is keyed by interface name (e.g. 'eth0', 'lo') and contains
@@ -77,7 +77,7 @@ class Network:
             return False
 
         interfaces = {}
-        ts = time.time()
+        ts = _time if _time is not None else time.time()
         with open(self.proc_net_dev_path, "r") as reader:
             # Skip the two header lines — they describe column layout but are
             # not machine-parseable; we rely on NET_DEV_KEYS ordering instead.
@@ -108,9 +108,10 @@ class Network:
                          stats["ipackets"], stats["opackets"])
         return interfaces
 
-    def __init__(self):
+    def __init__(self, _time=None):
         """Read /proc/net/dev and populate self.interfaces."""
-        self.interfaces = self.get_interfaces()
+        self._ts = _time if _time is not None else time.time()
+        self.interfaces = self.get_interfaces(self._ts)
 
 
 if __name__ == "__main__":

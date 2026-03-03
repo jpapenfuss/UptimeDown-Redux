@@ -50,16 +50,16 @@ def collect_once(logger, json_module):
 
     # Cloud metadata — runs on all platforms; fast-fails (TCP probe) on non-cloud machines.
     timebeforecloud = time.time()
-    mycloud = aws.AwsCloud()
+    mycloud = aws.AwsCloud(collected_at)
     timeaftercloud = time.time()
 
     if _PLATFORM == "aix":
         timebeforecpu = time.time()
-        mycpu    = aix_cpu.AixCpu()
-        mydisk   = aix_disk.AixDisk()
-        myfs     = aix_filesystems.AixFilesystems()
-        mymemory = aix_memory.AixMemory()
-        mynet    = aix_network.AixNetwork()
+        mycpu    = aix_cpu.AixCpu(collected_at)
+        mydisk   = aix_disk.AixDisk(collected_at)
+        myfs     = aix_filesystems.AixFilesystems(collected_at)
+        mymemory = aix_memory.AixMemory(collected_at)
+        mynet    = aix_network.AixNetwork(collected_at)
         timeafterfs = time.time()
 
         timebeforejson = time.time()
@@ -87,20 +87,17 @@ def collect_once(logger, json_module):
             'total': timeend - timestart,
             'startup': timebeforecpu - timestart,
             'cloud': timeaftercloud - timebeforecloud,
-            'cpu': mycpu.cpustat_values['_time'] - timestart,
-            'disk': mydisk.disk_total['_time'] - mycpu.cpustat_values['_time'],
-            'fs': myfs.filesystems['_time'] - mydisk.disk_total['_time'],
-            'memory': mymemory.stats['memory']['_time'] - myfs.filesystems['_time'],
+            'gather': timeafterfs - timebeforecpu,
             'json': timeafterjson - timebeforejson,
         }
 
     elif _PLATFORM == "linux":
         timebeforecpu = time.time()
-        mycpu    = linux_cpu.Cpu()
-        mydisk   = linux_disk.Disk()
-        mymemory = linux_memory.Memory()
-        myfs     = linux_filesystems.Filesystems()
-        mynet    = linux_network.Network()
+        mycpu    = linux_cpu.Cpu(collected_at)
+        mydisk   = linux_disk.Disk(collected_at)
+        mymemory = linux_memory.Memory(collected_at)
+        myfs     = linux_filesystems.Filesystems(collected_at)
+        mynet    = linux_network.Network(collected_at)
         timeafterfs = time.time()
 
         timebeforejson = time.time()
@@ -118,22 +115,11 @@ def collect_once(logger, json_module):
         timeafterjson = time.time()
 
         timeend = time.time()
-        slabs_time = None
-        if mymemory.stats["slabs"] is not False:
-            slabs_time = mymemory.stats['slabs']['_time'] - mymemory.stats['memory']['_time']
-            fs_start_time = mymemory.stats['slabs']['_time']
-        else:
-            fs_start_time = mymemory.stats['memory']['_time']
-
         timings = {
             'total': timeend - timestart,
             'startup': timebeforecpu - timestart,
             'cloud': timeaftercloud - timebeforecloud,
-            'cpu': mycpu.cpustat_values['_time'] - timestart,
-            'cpuinfo': mycpu.cpuinfo_values['_time'] - mycpu.cpustat_values['_time'],
-            'memory': mymemory.stats['memory']['_time'] - mycpu.cpuinfo_values['_time'],
-            'slabs': slabs_time,
-            'fs': myfs.filesystems['_time'] - fs_start_time,
+            'gather': timeafterfs - timebeforecpu,
             'json': timeafterjson - timebeforejson,
         }
 
@@ -161,22 +147,7 @@ def print_timings(timings):
     print(f"Time between start and finish: \t\t\t\t{timings['total']}")
     print(f"Time from start to before gathering: \t\t\t{timings['startup']}")
     print(f"Time for cloud metadata probe: \t\t\t\t{timings['cloud']}")
-    print(f"Time from start to end of CPU Stat: \t\t\t{timings['cpu']}")
-
-    if _PLATFORM == "aix":
-        print(f"Time from end of CPU to end of Disk: \t\t\t{timings['disk']}")
-        print(f"Time from end of Disk to end of FS: \t\t\t{timings['fs']}")
-        print(f"Time from end of FS to end of Memory: \t\t\t{timings['memory']}")
-    else:  # linux
-        print(f"Time from end of CPU Info to end of CPU Stat: \t\t{timings['cpuinfo']}")
-        print(f"Time from end of CPU Info to end of Memory: \t\t{timings['memory']}")
-        if timings['slabs'] is not None:
-            print(f"Time from end of Memory to end of Slabs: \t\t{timings['slabs']}")
-            print(f"Time from end of Slabs to end of FS: \t\t\t{timings['fs']}")
-        else:
-            print(f"Time from end of Memory to end of Slabs: \t\tskipped (slabinfo unreadable)")
-            print(f"Time from end of Memory to end of FS: \t\t\t{timings['fs']}")
-
+    print(f"Time for all gatherers (CPU, disk, memory, fs, net): \t{timings['gather']}")
     print(f"Time to generate json: \t\t\t\t\t{timings['json']}")
 
 
