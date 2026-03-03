@@ -15,7 +15,6 @@
 import sys
 sys.dont_write_bytecode = True
 import time
-import signal
 import uuid
 import os
 
@@ -156,16 +155,6 @@ def main():
     import json
     cfg = Config()
 
-    # Flag for graceful shutdown on SIGTERM/SIGINT
-    should_exit = False
-
-    def signal_handler(signum, frame):
-        nonlocal should_exit
-        should_exit = True
-
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
-
     iteration = 0
 
     while True:
@@ -186,11 +175,7 @@ def main():
         if cfg.max_iterations is not None and iteration >= cfg.max_iterations:
             break
 
-        if should_exit:
-            break
-
-        # Sleep until next collection (but be responsive to signals)
-        print(f"\nNext collection in {cfg.run_interval} seconds...", file=sys.stderr)
+        # Sleep until next collection
         time.sleep(cfg.run_interval)
 
 
