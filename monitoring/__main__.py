@@ -34,6 +34,9 @@ elif _PLATFORM == "linux":
 else:
     raise RuntimeError(f"Unsupported platform: {_PLATFORM!r}")
 
+# Cloud metadata gatherer — platform-agnostic, fast-fails on non-cloud machines.
+from gather import aws
+
 
 def collect_once(logger, json_module):
     """Collect metrics once and return (json_string, timings_dict)."""
@@ -44,6 +47,11 @@ def collect_once(logger, json_module):
     # exact equality. Rounded to milliseconds to survive JSON round-tripping
     # without float-precision drift.
     collected_at = round(time.time(), 3)
+
+    # Cloud metadata — runs on all platforms; fast-fails (TCP probe) on non-cloud machines.
+    timebeforecloud = time.time()
+    mycloud = aws.AwsCloud()
+    timeaftercloud = time.time()
 
     if _PLATFORM == "aix":
         timebeforecpu = time.time()
@@ -63,6 +71,7 @@ def collect_once(logger, json_module):
         jsonout = json_module.dumps({
             "system_id":   _SYSTEM_ID,
             "collected_at": collected_at,
+            "cloud":       mycloud.metadata,
             "cpustats":    cpustats_with_enum,
             "cpus":        mycpu.cpus,
             "disks":       mydisk.blockdevices,
@@ -77,6 +86,7 @@ def collect_once(logger, json_module):
         timings = {
             'total': timeend - timestart,
             'startup': timebeforecpu - timestart,
+            'cloud': timeaftercloud - timebeforecloud,
             'cpu': mycpu.cpustat_values['_time'] - timestart,
             'disk': mydisk.disk_total['_time'] - mycpu.cpustat_values['_time'],
             'fs': myfs.filesystems['_time'] - mydisk.disk_total['_time'],
@@ -97,6 +107,7 @@ def collect_once(logger, json_module):
         jsonout = json_module.dumps({
             "system_id":   _SYSTEM_ID,
             "collected_at": collected_at,
+            "cloud":       mycloud.metadata,
             "cpustats":    mycpu.cpustat_values,
             "cpuinfo":     mycpu.cpuinfo_values,
             "disks":       mydisk.blockdevices,
@@ -117,6 +128,7 @@ def collect_once(logger, json_module):
         timings = {
             'total': timeend - timestart,
             'startup': timebeforecpu - timestart,
+            'cloud': timeaftercloud - timebeforecloud,
             'cpu': mycpu.cpustat_values['_time'] - timestart,
             'cpuinfo': mycpu.cpuinfo_values['_time'] - mycpu.cpustat_values['_time'],
             'memory': mymemory.stats['memory']['_time'] - mycpu.cpuinfo_values['_time'],
@@ -148,6 +160,7 @@ def print_timings(timings):
     """Print collection timings."""
     print(f"Time between start and finish: \t\t\t\t{timings['total']}")
     print(f"Time from start to before gathering: \t\t\t{timings['startup']}")
+    print(f"Time for cloud metadata probe: \t\t\t\t{timings['cloud']}")
     print(f"Time from start to end of CPU Stat: \t\t\t{timings['cpu']}")
 
     if _PLATFORM == "aix":
