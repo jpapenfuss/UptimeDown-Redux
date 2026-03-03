@@ -110,21 +110,21 @@ Examples:
         "-i", "--run-interval",
         type=int,
         default=None,
-        help="Collection interval in seconds (minimum 5; overrides config.ini)",
+        help="Collection interval in seconds (minimum 5)",
         metavar="SECONDS",
     )
     parser.add_argument(
         "-m", "--max-iterations",
         type=int,
         default=None,
-        help="Maximum number of collection iterations before exiting (overrides config.ini)",
+        help="Maximum number of collection iterations before exiting",
         metavar="NUM",
     )
     parser.add_argument(
         "-l", "--log-level",
         default=None,
         choices=["DEBUG", "ERROR"],
-        help="Log level: DEBUG or ERROR (overrides config.ini)",
+        help="Log level: DEBUG or ERROR",
         metavar="LEVEL",
     )
     parser.add_argument(
