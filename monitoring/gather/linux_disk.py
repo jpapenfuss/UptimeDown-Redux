@@ -2,7 +2,7 @@
 #
 # Exposes a Disk class. After instantiation:
 #   blockdevices — dict keyed by device name, each entry containing an
-#                  "iostats" sub-dict of /proc/diskstats counters plus '_time'.
+#                  "iostats" sub-dict of /proc/diskstats counters.
 #
 # NOTE: get_sys_stats() and get_queue() are stubs; /sys/block enrichment is
 # not yet implemented.
@@ -85,7 +85,7 @@ class Disk:
     After instantiation:
         blockdevices — dict keyed by device name (e.g. "sda", "nvme0n1"), each
                        entry containing an "iostats" sub-dict of integer counters
-                       (DISKSTAT_KEYS) and a '_time' key.
+                       (DISKSTAT_KEYS).
 
     Devices matching IGNORE_PREFIXES (loop*, ram*) are silently skipped.
     /sys/block enrichment (get_sys_stats, get_queue) is stubbed out for future use.
@@ -101,8 +101,8 @@ class Disk:
         """Parse /proc/diskstats and return a dict of per-device I/O counters.
 
         Each entry is keyed by device name (e.g. "sda", "nvme0n1") and contains
-        an "iostats" sub-dict of integer counters mapped by DISKSTAT_KEYS, plus
-        a '_time' timestamp.  Devices whose names start with any prefix in
+        an "iostats" sub-dict of integer counters mapped by DISKSTAT_KEYS.
+        Devices whose names start with any prefix in
         IGNORE_PREFIXES are skipped.
 
         /proc/diskstats format (one line per device):
@@ -123,7 +123,6 @@ class Disk:
             logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
             return None
 
-        ts = _time if _time is not None else time.time()
         nskipped = 0
         with open(self.proc_diskstats_path, "r") as reader:
             # Example line:
@@ -142,7 +141,6 @@ class Disk:
                 diskname = diskstats_line.pop(2)
                 diskstats[diskname] = {
                     "iostats": dict(zip(DISKSTAT_KEYS, map(int, diskstats_line))),
-                    "_time": ts,
                 }
                 diskstats_line = str(reader.readline()).strip().split()
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)

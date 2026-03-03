@@ -6,8 +6,7 @@
 #   blockdevices  — per-disk stats dict keyed by disk name (perfstat_disk_t),
 #                   matching the shape of the Linux Disk.blockdevices dict
 #
-# Both attributes include a '_time' key. Call __init__() (re-instantiate) or
-# add an UpdateValues() method to refresh.
+# Call __init__() (re-instantiate) or add an UpdateValues() method to refresh.
 import sys
 sys.dont_write_bytecode = True
 import ctypes
@@ -198,8 +197,6 @@ def get_disk_total(lib, _time=None):
     result["ndisks"]  = result.pop("number")   # 'number' is ambiguous
     result["size_mb"] = result.pop("size")      # clarify units (MB)
     result["free_mb"] = result.pop("free")
-    result["_time"] = _time if _time is not None else time.time()
-
     logger.debug("get_disk_total: ndisks=%d size_mb=%d free_mb=%d xfers=%d",
                  result["ndisks"], result["size_mb"], result["free_mb"], result["xfers"])
     logger.debug("get_disk_total: rblks=%d wblks=%d xrate=%d",
@@ -222,7 +219,7 @@ def get_disks(lib, _time=None):
     make units explicit — perfstat_disk_t reports both in megabytes.
 
     Returns a dict keyed by disk name (e.g. "hdisk0"), or an empty dict on
-    error. All entries share a single '_time' timestamp taken after the call.
+    error.
     """
     logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
     lib.perfstat_disk.argtypes = [
@@ -259,13 +256,11 @@ def get_disks(lib, _time=None):
         return {}
 
     disks = {}
-    ts = _time if _time is not None else time.time()
     for i in range(ret):
         d = _struct_to_dict(disk_buf[i], perfstat_disk_t)
         # Rename ambiguous size/free to schema column names (units: MB).
         d["size_mb"] = d.pop("size")
         d["free_mb"] = d.pop("free")
-        d["_time"] = ts
         disks[d["name"]] = d
     logger.debug("get_disks: collected %d disks", len(disks))
     for dname, d in disks.items():
@@ -281,9 +276,9 @@ class AixDisk:
 
     Exposes:
         disk_total    — aggregate stats dict from perfstat_disk_total_t,
-                        including '_time'.
+                        matching schema names.
         blockdevices  — per-disk stats dict keyed by disk name (e.g. "hdisk0"),
-                        each entry from perfstat_disk_t with '_time'.
+                        each entry from perfstat_disk_t.
     """
 
     def __init__(self, _time=None):

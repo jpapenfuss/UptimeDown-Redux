@@ -81,9 +81,9 @@ class TestGetCpuinfo(unittest.TestCase):
         result = self._make_cpu(CPUINFO_SAMPLE)
         self.assertIsInstance(result, dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
-        self.assertEqual(result["_time"], 1000.0)
+        self.assertNotIn("_time", result)
 
     def test_integer_field_coerced(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
@@ -155,9 +155,9 @@ class TestGetCpuProcStats(unittest.TestCase):
     def test_returns_dict(self):
         self.assertIsInstance(self._make_stats(), dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         result = self._make_stats()
-        self.assertEqual(result["_time"], 2000.0)
+        self.assertNotIn("_time", result)
 
     def test_aggregate_cpu_row(self):
         result = self._make_stats()
@@ -221,8 +221,7 @@ class TestGetCpuProcStats(unittest.TestCase):
         self.assertIs(result, False)
 
     def test_softirqs_unreadable_does_not_crash(self):
-        # GetCpuSoftIrqs returning False must not cause a TypeError on
-        # the subsequent cpustats_values["_time"] assignment.
+        # GetCpuSoftIrqs returning False must not break proc/stat parsing.
         def caniread_side(path):
             # /proc/stat is readable; /proc/softirqs is not
             return "softirqs" not in path
@@ -237,7 +236,7 @@ class TestGetCpuProcStats(unittest.TestCase):
             result = cpu.GetCpuProcStats()
         # Must return a valid dict (not crash, not return False)
         self.assertIsInstance(result, dict)
-        self.assertEqual(result["_time"], 2000.0)
+        self.assertNotIn("_time", result)
         self.assertIn("cpu", result)
 
 
@@ -290,8 +289,8 @@ class TestUpdateValues(unittest.TestCase):
 
     def test_updatevalues_populates_both_attributes(self):
         cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-        cpu.GetCpuinfo = MagicMock(return_value={"_time": 1.0, "processor": 0})
-        cpu.GetCpuProcStats = MagicMock(return_value={"_time": 1.0, "user_ticks": 10})
+        cpu.GetCpuinfo = MagicMock(return_value={"processor": 0})
+        cpu.GetCpuProcStats = MagicMock(return_value={"user_ticks": 10})
         cpu.UpdateValues()
         self.assertEqual(cpu.cpuinfo_values["processor"], 0)
         self.assertEqual(cpu.cpustat_values["user_ticks"], 10)

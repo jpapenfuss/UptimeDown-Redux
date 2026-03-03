@@ -65,9 +65,9 @@ class TestGetFilesystems(unittest.TestCase):
     def test_returns_dict(self):
         self.assertIsInstance(self._run(), dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         result = self._run()
-        self.assertEqual(result["_time"], 7000.0)
+        self.assertNotIn("_time", result)
 
     def test_all_configured_mountpoints_present(self):
         result = self._run()
@@ -79,8 +79,6 @@ class TestGetFilesystems(unittest.TestCase):
         result = self._run()
         # No key should be a comment
         for key in result:
-            if key == "_time":
-                continue
             self.assertFalse(key.startswith("*"), f"Comment leaked as key: {key}")
 
     def test_mounted_entry_has_space_stats(self):
@@ -171,7 +169,7 @@ class TestAixFilesystemsInit(unittest.TestCase):
     """Verify that AixFilesystems.__init__() calls get_filesystems() and stores the result."""
 
     def test_init_populates_filesystems(self):
-        fake = {"/": {"mounted": True, "dev": "/dev/hd4"}, "_time": 1.0}
+        fake = {"/": {"mounted": True, "dev": "/dev/hd4"}}
         with patch.object(AixFilesystems, "get_filesystems", return_value=fake):
             obj = AixFilesystems()
         self.assertEqual(obj.filesystems, fake)

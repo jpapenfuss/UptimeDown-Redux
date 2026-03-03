@@ -46,11 +46,11 @@ class TestGetMemoryTotal(unittest.TestCase):
             result = get_memory_total()
         self.assertIsInstance(result, dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=6666.0):
             result = get_memory_total()
-        self.assertEqual(result["_time"], 6666.0)
+        self.assertNotIn("_time", result)
 
     def test_normalized_keys_present(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
@@ -115,21 +115,21 @@ class TestAixMemory(unittest.TestCase):
     """Tests for AixMemory class: stats dict shape, slabs=None invariant, and UpdateValues()."""
 
     def test_init_creates_stats_with_memory_and_slabs(self):
-        fake = {"mem_total": 1024 * PAGE_SIZE, "_time": 1.0}
+        fake = {"mem_total": 1024 * PAGE_SIZE}
         with patch("aix_memory.get_memory_total", return_value=fake):
             obj = AixMemory()
         self.assertIn("memory", obj.stats)
         self.assertIn("slabs", obj.stats)
 
     def test_slabs_always_none(self):
-        with patch("aix_memory.get_memory_total", return_value={"_time": 1.0}):
+        with patch("aix_memory.get_memory_total", return_value={}):
             obj = AixMemory()
         self.assertIsNone(obj.stats["slabs"])
 
     def test_update_values_refreshes_memory(self):
         obj = AixMemory.__new__(AixMemory)
         obj.stats = {}
-        new_data = {"mem_total": 999 * PAGE_SIZE, "_time": 2.0}
+        new_data = {"mem_total": 999 * PAGE_SIZE}
         with patch("aix_memory.get_memory_total", return_value=new_data):
             obj.UpdateValues()
         self.assertEqual(obj.stats["memory"], new_data)

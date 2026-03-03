@@ -17,7 +17,7 @@
 # live in util.py so future cloud provider gatherers can reuse them.
 #
 # Exposes AwsCloud class. After instantiation:
-#   metadata — dict with cloud/instance fields and a '_time' key,
+#   metadata — dict with cloud/instance fields,
 #              or False if the instance is not running on EC2.
 #
 # Design notes:
@@ -412,7 +412,6 @@ class AwsCloud:
                                 unavailable
             autoscaling_group   (boto3 only) ASG name string, or None if not in an ASG;
                                 omitted if boto3 unavailable
-            _time               Unix timestamp of data capture
         or False if not running on EC2 (IMDS unreachable or not AWS).
     """
 
@@ -421,10 +420,6 @@ class AwsCloud:
         if not util.imds_reachable(IMDS_IP):
             logger.debug("get_metadata: IMDS not reachable, not on EC2")
             return False
-
-        ts = getattr(self, '_ts', None)
-        if ts is None:
-            ts = time.time()
 
         token = _get_token()
         if token is None:
@@ -455,7 +450,6 @@ class AwsCloud:
             "ami_id":             identity.get("imageId", ""),
             "architecture":       identity.get("architecture", ""),
             "private_ip":         identity.get("privateIp", ""),
-            "_time":              ts,
         }
 
         lifecycle = _imds(_LIFECYCLE_PATH, token)

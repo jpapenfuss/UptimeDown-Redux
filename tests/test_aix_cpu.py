@@ -41,11 +41,11 @@ class TestGetCpuTotal(unittest.TestCase):
             result = get_cpu_total()
         self.assertIsInstance(result, dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)), \
              patch("time.time", return_value=8888.0):
             result = get_cpu_total()
-        self.assertEqual(result["_time"], 8888.0)
+        self.assertNotIn("_time", result)
 
     def test_no_padding_fields_in_result(self):
         with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)), \
@@ -122,7 +122,7 @@ class TestAixCpu(unittest.TestCase):
     """Tests for AixCpu class construction and UpdateValues() refresh behaviour."""
 
     def test_init_populates_cpustat_values(self):
-        fake = {"user_ticks": 100, "_time": 1.0}
+        fake = {"user_ticks": 100}
         with patch("aix_cpu.get_cpu_total", return_value=fake), \
              patch("aix_cpu.get_cpus", return_value={}):
             obj = AixCpu()
@@ -131,7 +131,7 @@ class TestAixCpu(unittest.TestCase):
     def test_update_values_refreshes(self):
         obj = AixCpu.__new__(AixCpu)
         obj.cpustat_values = {}
-        new_data = {"user_ticks": 999, "_time": 2.0}
+        new_data = {"user_ticks": 999}
         with patch("aix_cpu.get_cpu_total", return_value=new_data), \
              patch("aix_cpu.get_cpus", return_value={}):
             obj.UpdateValues()

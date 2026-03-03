@@ -247,7 +247,7 @@ class TestGetFilesystems(unittest.TestCase):
 class TestGetFilesystemsFromProc(unittest.TestCase):
     """End-to-end tests for get_filesystems_from_proc(): full parse path from mount file to output dict."""
 
-    def test_has_time_key(self):
+    def test_no_time_key(self):
         st = _make_statvfs()
         fs = Filesystems.__new__(Filesystems)
         fs.fs_reject = []
@@ -255,7 +255,7 @@ class TestGetFilesystemsFromProc(unittest.TestCase):
              patch("os.statvfs", return_value=st), \
              patch("time.time", return_value=9999.0):
             result = fs.get_filesystems_from_proc("/proc/mounts")
-        self.assertEqual(result["_time"], 9999.0)
+        self.assertNotIn("_time", result)
 
     def test_real_filesystems_included(self):
         st = _make_statvfs()

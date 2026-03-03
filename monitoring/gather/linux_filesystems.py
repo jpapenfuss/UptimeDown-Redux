@@ -3,8 +3,7 @@
 #
 # Exposes a Filesystems class. After instantiation:
 #   filesystems — dict keyed by mount path, each entry containing device,
-#                 filesystem type, mount options, and space stats. Also has a
-#                 top-level '_time' key.
+#                 filesystem type, mount options, and space stats.
 #
 # Virtual filesystems (cgroup, sysfs, tmpfs, etc.) are excluded via FS_IGNORE.
 #
@@ -57,7 +56,6 @@ class Filesystems:
         filesystems — dict keyed by mountpoint path. Each entry contains device,
                       vfs type, options (JSON string), and space stats derived from
                       statvfs (bytes_total, pct_used, pct_free, pct_reserved …).
-                      Includes a top-level '_time' key.
 
     Virtual filesystem types listed in FS_IGNORE are skipped. Mounts that
     statvfs() reports with f_blocks==0 are also silently dropped and added to
@@ -178,8 +176,7 @@ class Filesystems:
                 if filesystem:
                     fs.update(filesystem)
                 mount_line = str(reader.readline()).strip()
-        fs["_time"] = _time if _time is not None else time.time()
-        nmounts = len(fs) - 1  # exclude _time
+        nmounts = len(fs)
         logger.debug("get_filesystems_from_proc: collected %d filesystems", nmounts)
         return fs
 

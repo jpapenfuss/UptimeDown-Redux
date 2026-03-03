@@ -4,8 +4,7 @@
 #   cpuinfo_values  — hardware description for cpu0 (model, MHz, flags, etc.)
 #   cpustat_values  — per-core usage counters plus system-wide stats and softirqs
 #
-# Both dicts include a '_time' key (Unix timestamp) recording when the data
-# was captured.  Call UpdateValues() to refresh.
+# Call UpdateValues() to refresh.
 import sys
 sys.dont_write_bytecode = True
 import time
@@ -23,7 +22,7 @@ class Cpu:
         cpustat_values  — per-core tick counters, softirq counts, and
                           system-wide stats (ctxt, btime, processes …)
 
-    Both dicts carry a '_time' key. Call UpdateValues() to refresh.
+    Call UpdateValues() to refresh.
     The class-level lists (INTEGER_STATS, FLOAT_STATS, LIST_STATS) control
     how raw string values are coerced during parsing.
     """
@@ -101,8 +100,7 @@ class Cpu:
                 else:
                     cpuinfo_values[split[0]] = split[1]
                 cpuinfo_line = str(reader.readline()).strip()
-        cpuinfo_values["_time"] = _time if _time is not None else time.time()
-        nfields = len(cpuinfo_values) - 1  # exclude _time
+        nfields = len(cpuinfo_values)
         logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
         logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
                      cpuinfo_values.get("model name", "unknown"),
@@ -211,8 +209,6 @@ class Cpu:
                     else:
                         cpustats_values[key] = split
                 stat_line = str(reader.readline()).strip()
-
-        cpustats_values["_time"] = _time if _time is not None else time.time()
 
         # Promote aggregate CPU row's tick counters to top-level schema column names
         # so Linux and AIX rows share the same keys in the cpu_stats table.

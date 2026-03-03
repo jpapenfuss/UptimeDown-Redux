@@ -14,8 +14,8 @@ changes before modifying the database code.
   since epoch, rounded to milliseconds). It is captured once in `__main__.py`
   before any gatherers run and written identically to every data table.
   Cross-subsystem joins use exact equality on `(host_id, collected_at)`.
-  Individual gatherers still record their own `_time` in JSON output for
-  diagnostics, but `_time` is not stored in the database.
+    Gatherers do not emit per-object `_time` keys; database rows should always
+    use this run-level `collected_at` value.
 - **`host_id` foreign-key** ties every row to the `hosts` table so the same
   database can store data from multiple monitored systems.
 - **NULL is intentional.** Fields that are optional on a given platform or
@@ -78,7 +78,7 @@ start). `NULL` for fields not available on the current platform.
 CREATE TABLE IF NOT EXISTS cpu_stats (
     id              INTEGER PRIMARY KEY,
     host_id         INTEGER NOT NULL REFERENCES hosts(id),
-    collected_at    REAL    NOT NULL,   -- _time from gatherer
+    collected_at    REAL    NOT NULL,   -- run-level timestamp from __main__.py
 
     -- Available on both Linux and AIX
     user_ticks      INTEGER,    -- time in user mode          (Linux: 'user', AIX: 'user')

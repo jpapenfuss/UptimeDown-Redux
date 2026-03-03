@@ -70,9 +70,9 @@ class TestGetDevices(unittest.TestCase):
         self.assertEqual(iostats["read_ios"], 6812071)
         self.assertEqual(iostats["write_ios"], 9561353)
 
-    def test_time_key_per_device(self):
+    def test_no_time_key_per_device(self):
         result = self._run()
-        self.assertEqual(result["sda"]["_time"], 5000.0)
+        self.assertNotIn("_time", result["sda"])
 
     def test_device_name_is_dict_key_not_field(self):
         # Device name is popped before zipping; it must not appear as an
@@ -143,7 +143,7 @@ class TestGetDisks(unittest.TestCase):
     """Tests for get_disks(): orchestration of get_devices() + get_sys_stats() calls."""
 
     def test_populates_blockdevices_on_success(self):
-        fake_devices = {"sda": {"iostats": {"major": 8, "minor": 0}, "_time": 1.0}}
+        fake_devices = {"sda": {"iostats": {"major": 8, "minor": 0}}}
         d = Disk.__new__(Disk)
         d.blockdevices = {}
         d.get_devices = MagicMock(return_value=fake_devices)
@@ -160,8 +160,8 @@ class TestGetDisks(unittest.TestCase):
 
     def test_get_sys_stats_called_per_device(self):
         fake_devices = {
-            "sda": {"iostats": {"major": 8, "minor": 0}, "_time": 1.0},
-            "sdb": {"iostats": {"major": 8, "minor": 16}, "_time": 1.0},
+            "sda": {"iostats": {"major": 8, "minor": 0}},
+            "sdb": {"iostats": {"major": 8, "minor": 16}},
         }
         d = Disk.__new__(Disk)
         d.blockdevices = {}

@@ -57,7 +57,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 
 ### Key Conventions
 
-- Every gatherer attaches a `_time` key (via `time.time()`) to track when data was captured.
+- Collection output uses a single top-level `collected_at` timestamp per run; gatherers do not attach per-object `_time` keys.
 - Logging uses the `"monitoring"` logger name throughout, configured in `monitoring/log_setup.py` (DEBUG to `monitoring.log`, ERROR to stderr).
 - Optional log file — if current directory is not writable, logging silently falls back to stderr.
 - `config.ini` controls daemon mode (`run_interval`, `max_iterations`). `log_level = DEBUG` gates JSON file dumps only — it does not change logger verbosity. Logger levels are hardcoded in `log_setup.py` (file: DEBUG, stderr: ERROR).

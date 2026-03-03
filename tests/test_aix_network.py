@@ -92,17 +92,18 @@ class TestGetInterfaces(unittest.TestCase):
         for key in ("mtu", "bitrate", "if_iqdrops", "if_arpdrops", "description", "type"):
             self.assertIn(key, result["en0"])
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=8000.0):
             result = get_interfaces()
-        self.assertEqual(result["en0"]["_time"], 8000.0)
+        self.assertNotIn("_time", result["en0"])
 
-    def test_all_interfaces_share_same_timestamp(self):
+    def test_all_interfaces_have_no_time_key(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(2)), \
              patch("time.time", return_value=8000.0):
             result = get_interfaces()
-        self.assertEqual(result["en0"]["_time"], result["en1"]["_time"])
+        self.assertNotIn("_time", result["en0"])
+        self.assertNotIn("_time", result["en1"])
 
     def test_returns_empty_dict_when_lib_missing(self):
         with patch("ctypes.CDLL", side_effect=OSError("no libperfstat")):
@@ -136,14 +137,14 @@ class TestAixNetwork(unittest.TestCase):
     """Tests for AixNetwork class: init wiring, UpdateValues() refresh, and get_interfaces() delegation."""
 
     def test_init_populates_interfaces(self):
-        fake = {"en0": {"ibytes": 100, "_time": 1.0}}
+        fake = {"en0": {"ibytes": 100}}
         with patch("aix_network.get_interfaces", return_value=fake):
             obj = AixNetwork()
         self.assertEqual(obj.interfaces, fake)
 
     def test_update_values_refreshes(self):
         obj = AixNetwork.__new__(AixNetwork)
-        new_data = {"en0": {"ibytes": 999, "_time": 2.0}}
+        new_data = {"en0": {"ibytes": 999}}
         with patch("aix_network.get_interfaces", return_value=new_data):
             obj.UpdateValues()
         self.assertEqual(obj.interfaces, new_data)
