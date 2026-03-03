@@ -115,7 +115,6 @@ def get_memory_total(_time=None):
         return False
 
     p = PAGE_SIZE
-    _ts = _time if _time is not None else time.time()
     result = {
         # --- Normalized keys (shared with Linux) ---
         "mem_total":    buf.real_total   * p,
@@ -144,8 +143,6 @@ def get_memory_total(_time=None):
         "scans":        buf.scans,
         "cycles":       buf.cycles,
         "pgsteals":     buf.pgsteals,
-
-        "_time": _ts,
     }
 
     gb = 1024 ** 3

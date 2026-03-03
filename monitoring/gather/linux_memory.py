@@ -6,7 +6,7 @@
 #       stats["slabs"]  — per-slab allocator stats from /proc/slabinfo,
 #                         or False if slabinfo is unreadable (requires root)
 #
-# Both sub-dicts include a '_time' key.
+#
 import sys
 sys.dont_write_bytecode = True
 import time
@@ -25,7 +25,7 @@ class Memory:
         stats["slabs"]  — per-slab kernel allocator stats from /proc/slabinfo,
                           or False if the file is unreadable (requires root).
 
-    Both sub-dicts carry a '_time' key.
+    
     """
 
     @staticmethod
@@ -86,8 +86,7 @@ class Memory:
                     line[1] = util.tobytes(line[1], unit)
                 meminfo_values[key] = line[1]
                 meminfo_line = str(reader.readline()).strip()
-        meminfo_values["_time"] = _time if _time is not None else time.time()
-        nfields = len(meminfo_values) - 1  # exclude _time
+        nfields = len(meminfo_values)
         logger.debug("GetMeminfo: parsed %d fields", nfields)
         logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
                      meminfo_values.get("mem_total", 0),
@@ -160,13 +159,12 @@ class Memory:
                     )
                 )
                 slabline = reader.readline()
-        slabs["_time"] = _time if _time is not None else time.time()
-        nslabs = len(slabs) - 1  # exclude _time
+        nslabs = len(slabs)
         logger.debug("GetSlabinfo: parsed %d slab entries", nslabs)
         # Log only the top 5 slabs by active_objs — there can be hundreds of
         # slab types and logging all of them would flood the debug log.
         top = sorted(
-            ((k, v["active_objs"]) for k, v in slabs.items() if k != "_time"),
+            ((k, v["active_objs"]) for k, v in slabs.items()),
             key=lambda x: x[1], reverse=True
         )[:5]
         for name, active in top:

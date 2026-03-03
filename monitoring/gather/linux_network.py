@@ -2,7 +2,7 @@
 #
 # Exposes a Network class. After instantiation:
 #   interfaces — dict keyed by interface name (e.g. 'eth0', 'lo'), each entry
-#                containing all /proc/net/dev counters plus '_time'.
+#                containing all /proc/net/dev counters.
 #
 # All counter fields are cumulative since boot; compute rates by differencing
 # adjacent samples at query time (see SCHEMA.md).
@@ -48,7 +48,7 @@ class Network:
 
     After instantiation:
         interfaces — dict keyed by interface name (e.g. 'eth0', 'lo'), each entry
-                     containing the 16 counters from NET_DEV_KEYS and a '_time' key.
+                     containing the 16 counters from NET_DEV_KEYS.
 
     All counter fields are cumulative since boot. Compute rates by differencing
     adjacent samples at query time.
@@ -60,7 +60,7 @@ class Network:
         """Parse /proc/net/dev and return a dict of per-interface counters.
 
         Each entry is keyed by interface name (e.g. 'eth0', 'lo') and contains
-        integer counters mapped by NET_DEV_KEYS, plus a '_time' timestamp.
+        integer counters mapped by NET_DEV_KEYS.
 
         /proc/net/dev format:
             Line 1: "Inter-|   Receive ..."        (human-readable header, skipped)
@@ -77,7 +77,6 @@ class Network:
             return False
 
         interfaces = {}
-        ts = _time if _time is not None else time.time()
         with open(self.proc_net_dev_path, "r") as reader:
             # Skip the two header lines — they describe column layout but are
             # not machine-parseable; we rely on NET_DEV_KEYS ordering instead.
@@ -95,7 +94,6 @@ class Network:
                 iface = line[:colon].strip()
                 fields = line[colon + 1:].split()
                 interfaces[iface] = dict(zip(NET_DEV_KEYS, map(int, fields)))
-                interfaces[iface]["_time"] = ts
                 line = reader.readline()
         logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
         for iface, stats in interfaces.items():

@@ -3,7 +3,7 @@
 #
 # Exposes an AixNetwork class. After instantiation:
 #   interfaces — dict keyed by interface name (e.g. 'en0', 'lo0'), each entry
-#                containing all perfstat_netinterface_t counters plus '_time'.
+#                containing all perfstat_netinterface_t counters.
 #
 # All counter fields are cumulative since boot; compute rates by differencing
 # adjacent samples at query time (see SCHEMA.md).
@@ -86,7 +86,7 @@ def get_interfaces(_time=None):
     should be computed at query time by differencing adjacent rows.
 
     Returns a dict keyed by interface name (e.g. 'en0', 'lo0'), or an empty
-    dict on error. All entries share a single '_time' timestamp.
+    dict on error.
     """
     logger.debug("get_interfaces: calling perfstat_netinterface (count query + enumeration)")
     try:
@@ -130,7 +130,6 @@ def get_interfaces(_time=None):
         return {}
 
     interfaces = {}
-    ts = _time if _time is not None else time.time()
     for i in range(ret):
         buf = iface_buf[i]
         entry = {
@@ -148,7 +147,6 @@ def get_interfaces(_time=None):
             "bitrate":      buf.bitrate,
             "if_iqdrops":   buf.if_iqdrops,
             "if_arpdrops":  buf.if_arpdrops,
-            "_time":        ts,
         }
         interfaces[entry["iface"]] = entry
     logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
@@ -166,7 +164,7 @@ class AixNetwork:
     Exposes:
         interfaces — per-interface stats dict keyed by interface name
                      (e.g. 'en0', 'lo0'), each entry from
-                     perfstat_netinterface_t with '_time'.
+                     perfstat_netinterface_t.
     """
 
     def UpdateValues(self):

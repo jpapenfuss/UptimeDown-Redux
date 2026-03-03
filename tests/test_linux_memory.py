@@ -52,8 +52,8 @@ class TestGetMeminfo(unittest.TestCase):
     def test_returns_dict(self):
         self.assertIsInstance(self._run(), dict)
 
-    def test_time_key_present(self):
-        self.assertEqual(self._run()["_time"], 3000.0)
+    def test_time_key_absent(self):
+        self.assertNotIn("_time", self._run())
 
     def test_kb_converted_to_bytes(self):
         result = self._run()
@@ -73,8 +73,6 @@ class TestGetMeminfo(unittest.TestCase):
     def test_keys_are_snake_case(self):
         result = self._run()
         for key in result:
-            if key == "_time":
-                continue
             self.assertFalse(any(c.isupper() for c in key),
                              f"Non-snake_case key in output: {key!r}")
 
@@ -116,8 +114,8 @@ class TestGetSlabinfo(unittest.TestCase):
     def test_returns_dict(self):
         self.assertIsInstance(self._run(), dict)
 
-    def test_time_key_present(self):
-        self.assertEqual(self._run()["_time"], 3500.0)
+    def test_time_key_absent(self):
+        self.assertNotIn("_time", self._run())
 
     def test_skips_header_line(self):
         result = self._run()
@@ -164,8 +162,8 @@ class TestMemoryInit(unittest.TestCase):
 
     def test_stats_has_memory_and_slabs_keys(self):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)
-        fake_memory = {"_time": 1.0, "mem_total": 1024}
-        fake_slabs = {"_time": 1.0, "kmalloc-64": {"active_objs": 10}}
+        fake_memory = {"mem_total": 1024}
+        fake_slabs = {"kmalloc-64": {"active_objs": 10}}
         mem.GetMeminfo = MagicMock(return_value=fake_memory)
         mem.GetSlabinfo = MagicMock(return_value=fake_slabs)
         mem.__init__()
@@ -176,7 +174,7 @@ class TestMemoryInit(unittest.TestCase):
 
     def test_slabs_false_when_unreadable(self):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)
-        mem.GetMeminfo = MagicMock(return_value={"_time": 1.0})
+        mem.GetMeminfo = MagicMock(return_value={})
         mem.GetSlabinfo = MagicMock(return_value=False)
         mem.__init__()
         self.assertIs(mem.stats["slabs"], False)

@@ -100,12 +100,12 @@ class TestGetDiskTotal(unittest.TestCase):
             result = get_disk_total(lib)
         self.assertIsInstance(result, dict)
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         lib = MagicMock()
         lib.perfstat_disk_total.return_value = 1
         with patch("time.time", return_value=4242.0):
             result = get_disk_total(lib)
-        self.assertEqual(result["_time"], 4242.0)
+        self.assertNotIn("_time", result)
 
     def test_field_renames(self):
         lib = MagicMock()
@@ -203,8 +203,8 @@ class TestAixDiskInit(unittest.TestCase):
 
     def test_init_populates_disk_total_and_blockdevices(self):
         fake_lib = MagicMock()
-        fake_total = {"ndisks": 5, "size_mb": 1000, "_time": 1.0}
-        fake_disks = {"hdisk0": {"name": "hdisk0", "_time": 1.0}}
+        fake_total = {"ndisks": 5, "size_mb": 1000}
+        fake_disks = {"hdisk0": {"name": "hdisk0"}}
         with patch("aix_disk._load_lib", return_value=fake_lib), \
              patch("aix_disk.get_disk_total", return_value=fake_total), \
              patch("aix_disk.get_disks", return_value=fake_disks):

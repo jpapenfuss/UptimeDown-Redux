@@ -4,7 +4,6 @@
 #   cpustat_values — dict of system-wide CPU counters from perfstat_cpu_total_t,
 #                    including usage ticks, load averages, syscall counts, and
 #                    LPAR/POWER-specific PURR/SPURR donated/stolen cycle counters.
-#                    Includes a '_time' key.
 #
 # Call UpdateValues() to refresh. The class interface mirrors Linux Cpu so that
 # __main__.py can treat them interchangeably (noting AIX has no cpuinfo_values).
@@ -287,9 +286,6 @@ def get_cpus(_time=None):
         logger.error(f"perfstat_cpu enumeration returned {ret}, expected {ncpus}")
         return False
 
-    # Capture _time once before the loop — all CPUs share the same timestamp
-    ts = _time if _time is not None else time.time()
-
     # Convert to dict keyed by CPU name
     result = {}
     for i in range(ncpus):
@@ -317,7 +313,6 @@ def get_cpus(_time=None):
                 # Keep all numeric fields as-is
                 cpu_dict[field_name] = val
 
-        cpu_dict["_time"] = ts
         result[cpu_name] = cpu_dict
 
     logger.debug("get_cpus: enumerated %d CPUs", len(result))
@@ -390,8 +385,6 @@ def get_cpu_total(_time=None):
     raw["loadavg_15"]    = la[2]
     result = raw
 
-    result["_time"] = _time if _time is not None else time.time()
-
     logger.debug("get_cpu_total: description=%r ncpus=%d processor_hz=%d",
                  result.get("description"), result.get("ncpus"), result.get("processor_hz"))
     logger.debug("get_cpu_total: user_ticks=%d sys_ticks=%d idle_ticks=%d iowait_ticks=%d",
@@ -425,8 +418,8 @@ class AixCpu:
     """AIX CPU gatherer. Wraps get_cpu_total() and get_cpus() for CPU statistics.
 
     Exposes:
-        cpustat_values — dict from perfstat_cpu_total_t (system-wide aggregate), including '_time'.
-        cpus           — dict of per-CPU stats, keyed by CPU name (e.g. "cpu0", "cpu1"), including '_time' per CPU.
+        cpustat_values — dict from perfstat_cpu_total_t (system-wide aggregate).
+        cpus           — dict of per-CPU stats, keyed by CPU name (e.g. "cpu0", "cpu1").
 
     Note: AIX has no cpuinfo equivalent accessible without parsing lsattr/lsdev
     output. There is no cpuinfo_values attribute on this class.

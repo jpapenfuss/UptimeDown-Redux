@@ -73,7 +73,6 @@ class perfstat_cpu_total_t(ctypes.Structure):
         ("idle_donated_purr",  ctypes.c_ulonglong),  # PURR cycles (LPAR)
         ("busy_stolen_spurr",  ctypes.c_ulonglong),  # SPURR cycles (LPAR)
         # ... etc
-        ("_time",              ???),  # Not in struct; added in Python
     ]
 ```
 

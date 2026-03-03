@@ -241,8 +241,8 @@ class TestOnEc2Structure(unittest.TestCase):
     def test_private_ip(self):
         self.assertEqual(self.result["private_ip"], "10.0.1.42")
 
-    def test_time_key(self):
-        self.assertEqual(self.result["_time"], 9000.0)
+    def test_time_key_absent(self):
+        self.assertNotIn("_time", self.result)
 
     def test_instance_life_cycle_ondemand(self):
         self.assertEqual(self.result["instance_life_cycle"], "on-demand")
@@ -759,7 +759,7 @@ class TestAwsCloudInit(unittest.TestCase):
     """__init__() calls get_metadata() and stores result in self.metadata."""
 
     def test_init_populates_metadata(self):
-        fake = {"provider": "aws", "_time": 1.0}
+        fake = {"provider": "aws"}
         n = AwsCloud.__new__(AwsCloud)
         with patch.object(n, "get_metadata", return_value=fake):
             n.__init__()

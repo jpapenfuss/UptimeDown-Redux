@@ -31,7 +31,7 @@ class AixFilesystems:
     recorded with config data only and mounted=False.
 
     Exposes:
-        self.filesystems — dict keyed by mountpoint, with '_time' key.
+        self.filesystems — dict keyed by mountpoint.
                            Shape matches Linux Filesystems class for mounted
                            entries. Unmounted entries carry dev/vfs/type/etc
                            from /etc/filesystems config with mounted=False.
@@ -80,7 +80,7 @@ class AixFilesystems:
         JSON object by _parse_options() — bare flags map to true, key=value
         pairs map to the value string.
 
-        Returns a dict keyed by mountpoint, with a top-level '_time' key.
+        Returns a dict keyed by mountpoint.
         Returns {} and logs an error if /etc/filesystems is unreadable.
         """
         logger.debug("get_filesystems: reading /etc/filesystems")
@@ -159,7 +159,6 @@ class AixFilesystems:
 
             filesystems[mountpoint] = entry
 
-        filesystems["_time"] = _time if _time is not None else time.time()
         logger.debug("get_filesystems: total=%d mounted=%d unmounted=%d",
                      len(config), nmounted, nunmounted)
         return filesystems
@@ -169,11 +168,11 @@ class AixFilesystems:
         logger.debug("AixFilesystems: initializing")
         self._ts = _time if _time is not None else time.time()
         self.filesystems = self.get_filesystems()
-        # Count mounted filesystems, excluding the _time metadata key.
+                # Count mounted filesystems.
         nmounted = sum(1 for k, v in self.filesystems.items()
-                       if k != "_time" and v.get("mounted"))
+                                             if v.get("mounted"))
         logger.debug("AixFilesystems: initialized (%d total, %d mounted)",
-                     len(self.filesystems) - 1, nmounted)
+                                         len(self.filesystems), nmounted)
 
 
 if __name__ == "__main__":
@@ -182,5 +181,5 @@ if __name__ == "__main__":
     myfs = AixFilesystems()
     mounted   = {k: v for k, v in myfs.filesystems.items() if isinstance(v, dict) and v.get("mounted")}
     unmounted = {k: v for k, v in myfs.filesystems.items() if isinstance(v, dict) and not v.get("mounted")}
-    print(f"Total: {len(myfs.filesystems)-1}  Mounted: {len(mounted)}  Unmounted: {len(unmounted)}")
+    print(f"Total: {len(myfs.filesystems)}  Mounted: {len(mounted)}  Unmounted: {len(unmounted)}")
     pp.pprint(myfs.filesystems)

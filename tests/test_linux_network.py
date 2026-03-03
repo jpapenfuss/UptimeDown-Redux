@@ -70,10 +70,10 @@ class TestGetInterfaces(unittest.TestCase):
         for key in NET_DEV_KEYS:
             self.assertIn(key, result["eth0"])
 
-    def test_time_key_present(self):
+    def test_time_key_absent(self):
         result = self._run()
-        self.assertEqual(result["eth0"]["_time"], 7000.0)
-        self.assertEqual(result["lo"]["_time"], 7000.0)
+        self.assertNotIn("_time", result["eth0"])
+        self.assertNotIn("_time", result["lo"])
 
     def test_all_values_are_int(self):
         result = self._run()
@@ -97,7 +97,7 @@ class TestNetworkInit(unittest.TestCase):
     """Tests for Network.__init__(): verifies get_interfaces() is called on construction."""
 
     def test_init_populates_interfaces(self):
-        fake = {"eth0": {"ibytes": 100, "_time": 1.0}}
+        fake = {"eth0": {"ibytes": 100}}
         n = Network.__new__(Network)
         with patch.object(n, "get_interfaces", return_value=fake):
             n.__init__()
