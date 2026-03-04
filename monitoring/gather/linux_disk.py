@@ -139,13 +139,10 @@ class Disk:
                     continue
                 # Pop the device name from index 2 before zipping the counters.
                 diskname = diskstats_line.pop(2)
-                diskstats[diskname] = {
-                    "iostats": dict(zip(DISKSTAT_KEYS, map(int, diskstats_line))),
-                }
+                diskstats[diskname] = dict(zip(DISKSTAT_KEYS, map(int, diskstats_line)))
                 diskstats_line = str(reader.readline()).strip().split()
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
-        for devname, entry in diskstats.items():
-            s = entry["iostats"]
+        for devname, s in diskstats.items():
             logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d "
                          "read_sectors=%d write_sectors=%d",
                          devname, s["major"], s["minor"],
@@ -188,9 +185,9 @@ class Disk:
         for dev in devs:
             # Build the "major:minor" string that /sys/dev/block/ uses as a key.
             devnum = (
-                str(devs[dev]["iostats"]["major"])
+                str(devs[dev]["major"])
                 + ":"
-                + str(devs[dev]["iostats"]["minor"])
+                + str(devs[dev]["minor"])
             )
             self.get_sys_stats(devnum)
         self.blockdevices = devs

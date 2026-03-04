@@ -193,12 +193,12 @@ def get_disk_total(lib, _time=None):
         return False
 
     result = _struct_to_dict(buf, perfstat_disk_total_t)
-    # Rename to schema column names.
-    result["ndisks"]  = result.pop("number")   # 'number' is ambiguous
-    result["size_mb"] = result.pop("size")      # clarify units (MB)
-    result["free_mb"] = result.pop("free")
-    logger.debug("get_disk_total: ndisks=%d size_mb=%d free_mb=%d xfers=%d",
-                 result["ndisks"], result["size_mb"], result["free_mb"], result["xfers"])
+    # Rename to schema column names and convert capacity to bytes.
+    result["ndisks"]      = result.pop("number")
+    result["size_bytes"]  = result.pop("size") * 1024 * 1024
+    result["free_bytes"]  = result.pop("free") * 1024 * 1024
+    logger.debug("get_disk_total: ndisks=%d size_bytes=%d free_bytes=%d xfers=%d",
+                 result["ndisks"], result["size_bytes"], result["free_bytes"], result["xfers"])
     logger.debug("get_disk_total: rblks=%d wblks=%d xrate=%d",
                  result["rblks"], result["wblks"], result["xrate"])
     return result
@@ -258,14 +258,14 @@ def get_disks(lib, _time=None):
     disks = {}
     for i in range(ret):
         d = _struct_to_dict(disk_buf[i], perfstat_disk_t)
-        # Rename ambiguous size/free to schema column names (units: MB).
-        d["size_mb"] = d.pop("size")
-        d["free_mb"] = d.pop("free")
+        # Convert capacity from MB to bytes and use schema column names.
+        d["size_bytes"] = d.pop("size") * 1024 * 1024
+        d["free_bytes"] = d.pop("free") * 1024 * 1024
         disks[d["name"]] = d
     logger.debug("get_disks: collected %d disks", len(disks))
     for dname, d in disks.items():
-        logger.debug("get_disks:   %s size_mb=%d free_mb=%d xfers=%d xrate=%d vgname=%r",
-                     dname, d["size_mb"], d["free_mb"], d["xfers"], d["xrate"], d["vgname"])
+        logger.debug("get_disks:   %s size_bytes=%d free_bytes=%d xfers=%d xrate=%d vgname=%r",
+                     dname, d["size_bytes"], d["free_bytes"], d["xfers"], d["xrate"], d["vgname"])
     return disks
 
 

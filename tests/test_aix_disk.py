@@ -113,11 +113,21 @@ class TestGetDiskTotal(unittest.TestCase):
         with patch("time.time", return_value=1.0):
             result = get_disk_total(lib)
         self.assertIn("ndisks", result)
-        self.assertIn("size_mb", result)
-        self.assertIn("free_mb", result)
+        self.assertIn("size_bytes", result)
+        self.assertIn("free_bytes", result)
         self.assertNotIn("number", result)
         self.assertNotIn("size", result)
         self.assertNotIn("free", result)
+        self.assertNotIn("size_mb", result)
+        self.assertNotIn("free_mb", result)
+
+    def test_size_converted_to_bytes(self):
+        # size and free from perfstat are in MB; verify conversion to bytes (×1024×1024).
+        lib = self._make_lib()
+        with patch("time.time", return_value=1.0):
+            result = get_disk_total(lib)
+        self.assertEqual(result["size_bytes"], 1024 * 1024 * 1024)   # 1024 MB in bytes
+        self.assertEqual(result["free_bytes"],  512 * 1024 * 1024)   # 512 MB in bytes
 
     def test_no_padding_in_result(self):
         lib = MagicMock()
@@ -179,10 +189,12 @@ class TestGetDisks(unittest.TestCase):
             result = get_disks(lib)
         self.assertIn("hdisk0", result)
         entry = result["hdisk0"]
-        self.assertIn("size_mb", entry)
-        self.assertIn("free_mb", entry)
+        self.assertIn("size_bytes", entry)
+        self.assertIn("free_bytes", entry)
         self.assertNotIn("size", entry)
         self.assertNotIn("free", entry)
+        self.assertNotIn("size_mb", entry)
+        self.assertNotIn("free_mb", entry)
 
     def test_enumeration_failure_returns_empty(self):
         lib = MagicMock()
@@ -203,7 +215,7 @@ class TestAixDiskInit(unittest.TestCase):
 
     def test_init_populates_disk_total_and_blockdevices(self):
         fake_lib = MagicMock()
-        fake_total = {"ndisks": 5, "size_mb": 1000}
+        fake_total = {"ndisks": 5, "size_bytes": 1024 * 1024 * 1000}
         fake_disks = {"hdisk0": {"name": "hdisk0"}}
         with patch("aix_disk._load_lib", return_value=fake_lib), \
              patch("aix_disk.get_disk_total", return_value=fake_total), \

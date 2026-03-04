@@ -41,8 +41,8 @@ class perfstat_netinterface_t(ctypes.Structure):
 
     Layout: char[64] name, char[64] description, uchar type (1 byte),
     7 bytes implicit padding to align the following u_longlong_t to 8 bytes,
-    then 12 × u_longlong_t fields.
-    sizeof == 232.
+    then 11 × u_longlong_t fields.
+    sizeof == 224.
 
     Note: the C struct spells the rx packet count field 'ipackets' but the
     IBM/OpenJDK header has it as 'ipacets' (a long-standing typo in libperfstat.h).
@@ -132,8 +132,8 @@ def get_interfaces(_time=None):
     interfaces = {}
     for i in range(ret):
         buf = iface_buf[i]
+        iface_name = buf.name.decode("ascii", errors="replace").rstrip("\x00")
         entry = {
-            "iface":        buf.name.decode("ascii", errors="replace").rstrip("\x00"),
             "description":  buf.description.decode("ascii", errors="replace").rstrip("\x00"),
             "type":         buf.type,
             "mtu":          buf.mtu,
@@ -148,7 +148,7 @@ def get_interfaces(_time=None):
             "if_iqdrops":   buf.if_iqdrops,
             "if_arpdrops":  buf.if_arpdrops,
         }
-        interfaces[entry["iface"]] = entry
+        interfaces[iface_name] = entry
     logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
     for iface, e in interfaces.items():
         logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
