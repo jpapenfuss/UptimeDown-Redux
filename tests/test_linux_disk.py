@@ -58,29 +58,30 @@ class TestGetDevices(unittest.TestCase):
     def test_ram_skipped(self):
         self.assertNotIn("ram0", self._run())
 
-    def test_iostats_sub_dict_present(self):
+    def test_no_iostats_wrapper(self):
+        # Fields are stored directly on the device entry, not nested under "iostats".
         result = self._run()
-        self.assertIn("iostats", result["sda"])
+        self.assertNotIn("iostats", result["sda"])
 
-    def test_iostats_fields_mapped(self):
+    def test_fields_mapped(self):
         result = self._run()
-        iostats = result["sda"]["iostats"]
-        self.assertEqual(iostats["major"], 8)
-        self.assertEqual(iostats["minor"], 0)
-        self.assertEqual(iostats["read_ios"], 6812071)
-        self.assertEqual(iostats["write_ios"], 9561353)
+        entry = result["sda"]
+        self.assertEqual(entry["major"], 8)
+        self.assertEqual(entry["minor"], 0)
+        self.assertEqual(entry["read_ios"], 6812071)
+        self.assertEqual(entry["write_ios"], 9561353)
 
     def test_no_time_key_per_device(self):
         result = self._run()
         self.assertNotIn("_time", result["sda"])
 
     def test_device_name_is_dict_key_not_field(self):
-        # Device name is popped before zipping; it must not appear as an
-        # iostats field — otherwise the column alignment shifts by one.
+        # Device name is popped before zipping; it must not appear as a field —
+        # otherwise the column alignment shifts by one.
         result = self._run()
-        self.assertNotIn("name", result["sda"]["iostats"])
-        # And major must be the first column (8), not shifted to second
-        self.assertEqual(result["sda"]["iostats"]["major"], 8)
+        self.assertNotIn("name", result["sda"])
+        # And major must be the first column (8), not shifted to second.
+        self.assertEqual(result["sda"]["major"], 8)
 
     def test_returns_none_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
@@ -96,8 +97,8 @@ class TestGetDevices(unittest.TestCase):
             d = Disk.__new__(Disk)
             result = d.get_devices()
         for key in DISKSTAT_KEYS:
-            self.assertIn(key, result["nvme0n1"]["iostats"],
-                          f"Expected key {key!r} missing from iostats")
+            self.assertIn(key, result["nvme0n1"],
+                          f"Expected key {key!r} missing from device entry")
 
     def test_19_field_values_correct(self):
         # Spot-check several fields from the fixture to confirm correct column mapping.
@@ -106,14 +107,14 @@ class TestGetDevices(unittest.TestCase):
              patch("time.time", return_value=1.0):
             d = Disk.__new__(Disk)
             result = d.get_devices()
-        iostats = result["nvme0n1"]["iostats"]
-        self.assertEqual(iostats["major"],          259)
-        self.assertEqual(iostats["minor"],          5)
-        self.assertEqual(iostats["read_ios"],       16564)
-        self.assertEqual(iostats["write_ios"],      538776)
-        self.assertEqual(iostats["discard_ios"],    0)
-        self.assertEqual(iostats["flush_ios"],      12885)
-        self.assertEqual(iostats["flush_ticks"],    28136)
+        entry = result["nvme0n1"]
+        self.assertEqual(entry["major"],          259)
+        self.assertEqual(entry["minor"],          5)
+        self.assertEqual(entry["read_ios"],       16564)
+        self.assertEqual(entry["write_ios"],      538776)
+        self.assertEqual(entry["discard_ios"],    0)
+        self.assertEqual(entry["flush_ios"],      12885)
+        self.assertEqual(entry["flush_ticks"],    28136)
 
     def test_partial_fields_produce_no_extra_keys(self):
         # A line shorter than DISKSTAT_KEYS must not invent keys for absent fields.
@@ -126,9 +127,9 @@ class TestGetDevices(unittest.TestCase):
             d = Disk.__new__(Disk)
             result = d.get_devices()
         # Only 13 keys (indices 0-12 of DISKSTAT_KEYS) should be present.
-        self.assertNotIn("discard_ios", result["sda"]["iostats"])
-        self.assertNotIn("flush_ios",   result["sda"]["iostats"])
-        self.assertEqual(len(result["sda"]["iostats"]), 13)
+        self.assertNotIn("discard_ios", result["sda"])
+        self.assertNotIn("flush_ios",   result["sda"])
+        self.assertEqual(len(result["sda"]), 13)
 
     def test_empty_file_returns_empty_dict(self):
         with patch("monitoring.gather.util.caniread", return_value=True), \
@@ -143,7 +144,7 @@ class TestGetDisks(unittest.TestCase):
     """Tests for get_disks(): orchestration of get_devices() + get_sys_stats() calls."""
 
     def test_populates_blockdevices_on_success(self):
-        fake_devices = {"sda": {"iostats": {"major": 8, "minor": 0}}}
+        fake_devices = {"sda": {"major": 8, "minor": 0}}
         d = Disk.__new__(Disk)
         d.blockdevices = {}
         d.get_devices = MagicMock(return_value=fake_devices)
@@ -160,8 +161,8 @@ class TestGetDisks(unittest.TestCase):
 
     def test_get_sys_stats_called_per_device(self):
         fake_devices = {
-            "sda": {"iostats": {"major": 8, "minor": 0}},
-            "sdb": {"iostats": {"major": 8, "minor": 16}},
+            "sda": {"major": 8, "minor": 0},
+            "sdb": {"major": 8, "minor": 16},
         }
         d = Disk.__new__(Disk)
         d.blockdevices = {}
