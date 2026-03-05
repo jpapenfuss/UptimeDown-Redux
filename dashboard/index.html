@@ -176,9 +176,9 @@
 <script>
 // ── Configuration ────────────────────────────────────────────────────────────
 const CONFIG = {
-  maxFiles:        60,   // how many recent JSON files to load
   refreshInterval: 30,   // seconds between auto-refreshes (0 = disabled)
 };
+// Note: server's --max-files limit controls how many files are loaded
 
 // ── Chart instances ──────────────────────────────────────────────────────────
 const charts = {};
@@ -264,8 +264,8 @@ async function fetchData(filename) {
 
 async function loadAllData() {
   const files = await fetchFiles();
-  const recent = files.slice(0, CONFIG.maxFiles);
-  const results = await Promise.all(recent.map(f => fetchData(f).catch(() => null)));
+  // Load all files returned by server (server's --max-files limit is the actual limit)
+  const results = await Promise.all(files.map(f => fetchData(f).catch(() => null)));
   const points = results
     .filter(Boolean)
     .sort((a, b) => a.collected_at - b.collected_at);
