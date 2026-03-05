@@ -109,7 +109,7 @@ def main():
     DashboardHandler.data_dir = args.data_dir
     DashboardHandler.max_files = args.max_files
 
-    print(f"Dashboard : http://localhost:{args.port}/")
+    print(f"Dashboard : http://localhost:{args.port}/ (or http://<your-ip>:{args.port}/)")
     print(f"Data dir  : {args.data_dir}")
     print(f"Max files : {args.max_files}")
     print("Press Ctrl+C to stop.")
