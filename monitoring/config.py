@@ -23,6 +23,7 @@ class Config:
         self.max_iterations = None  # None = run forever
         self.log_level = "ERROR"  # ERROR or DEBUG
         self.dump_json = False  # write JSON dumps to collected-data/
+        self.data_dir = "collected-data"  # directory for JSON dumps
         self._load_config()
         if args:
             self._apply_cli_overrides(args)
@@ -67,13 +68,17 @@ class Config:
                 if level in ("DEBUG", "ERROR"):
                     self.log_level = level
 
-        # Load dump_json from [output] section
+        # Load output settings from [output] section
         if parser.has_section("output"):
             if parser.has_option("output", "dump_json"):
                 try:
                     self.dump_json = parser.getboolean("output", "dump_json")
                 except ValueError:
                     pass
+            if parser.has_option("output", "data_dir"):
+                path = parser.get("output", "data_dir").strip()
+                if path:
+                    self.data_dir = path
 
     def _apply_cli_overrides(self, args):
         """Apply command-line argument overrides to config."""
@@ -96,12 +101,16 @@ class Config:
         if args.dump:
             self.dump_json = True
 
+        if args.data_dir is not None:
+            self.data_dir = args.data_dir
+
     def __repr__(self):
         return (
             f"Config(run_interval={self.run_interval}s, "
             f"max_iterations={self.max_iterations}, "
             f"log_level={self.log_level}, "
-            f"dump_json={self.dump_json})"
+            f"dump_json={self.dump_json}, "
+            f"data_dir={self.data_dir!r})"
         )
 
 
@@ -148,6 +157,12 @@ Examples:
     parser.add_argument(
         "-d", "--dump",
         action="store_true",
-        help="Write each collection as a JSON file in collected-data/",
+        help="Write each collection as a JSON file",
+    )
+    parser.add_argument(
+        "--data-dir",
+        default=None,
+        help="Directory for JSON dump files (default: collected-data)",
+        metavar="PATH",
     )
     return parser

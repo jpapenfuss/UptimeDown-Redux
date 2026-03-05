@@ -125,15 +125,14 @@ def collect_once(logger, json_module):
     return jsonout, timings
 
 
-def dump_json_file(json_string, logger):
+def dump_json_file(json_string, logger, data_dir):
     """Dump JSON output to a file with uuid-timestamp naming.
 
     Filename format: <uuid>-<timestamp>.json
-    Writes to the collected-data/ subdirectory of the current directory,
-    creating it if needed. Silently fails if not writable.
+    Writes to the specified data_dir, creating it if needed.
+    Silently fails if not writable.
     """
     try:
-        data_dir = "collected-data"
         os.makedirs(data_dir, exist_ok=True)
         filename = os.path.join(data_dir, f"{uuid.uuid4()}-{int(time.time())}.json")
         with open(filename, 'w') as f:
@@ -178,7 +177,7 @@ def main():
 
         # Dump JSON to file if enabled (via --dump flag or config.ini [output] dump_json)
         if cfg.dump_json:
-            dump_json_file(jsonout, logger)
+            dump_json_file(jsonout, logger, cfg.data_dir)
 
         # Check if we should exit
         if cfg.max_iterations is not None and iteration >= cfg.max_iterations:

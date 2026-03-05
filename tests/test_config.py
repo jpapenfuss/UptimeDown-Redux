@@ -21,6 +21,7 @@ class TestConfigDefaults(unittest.TestCase):
             self.assertIsNone(cfg.max_iterations)
             self.assertEqual(cfg.log_level, "ERROR")
             self.assertFalse(cfg.dump_json)
+            self.assertEqual(cfg.data_dir, "collected-data")
 
 
 class TestConfigIniLoading(unittest.TestCase):
@@ -73,6 +74,18 @@ class TestConfigIniLoading(unittest.TestCase):
             with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
                 cfg = Config()
                 self.assertEqual(cfg.log_level, "DEBUG")
+
+    def test_load_data_dir(self):
+        """Test loading data_dir from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda section: section == "output"
+        mock_parser.has_option.side_effect = lambda section, option: option == "data_dir"
+        mock_parser.get.return_value = "/var/log/uptimedown"
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.data_dir, "/var/log/uptimedown")
 
 
 class TestCliArgumentParsing(unittest.TestCase):
@@ -140,6 +153,11 @@ class TestCliArgumentParsing(unittest.TestCase):
         """Test parsing -d short form."""
         args = self.parser.parse_args(['-d'])
         self.assertTrue(args.dump)
+
+    def test_parse_data_dir(self):
+        """Test parsing --data-dir."""
+        args = self.parser.parse_args(['--data-dir', '/tmp/metrics'])
+        self.assertEqual(args.data_dir, '/tmp/metrics')
 
     def test_multiple_arguments(self):
         """Test parsing multiple arguments together."""
@@ -210,6 +228,14 @@ class TestCliOverrides(unittest.TestCase):
             args = parser.parse_args(['-d'])
             cfg = Config(args)
             self.assertTrue(cfg.dump_json)
+
+    def test_cli_data_dir_override(self):
+        """Test that --data-dir overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            parser = create_argument_parser()
+            args = parser.parse_args(['--data-dir', '/var/log/metrics'])
+            cfg = Config(args)
+            self.assertEqual(cfg.data_dir, '/var/log/metrics')
 
 
 if __name__ == '__main__':
