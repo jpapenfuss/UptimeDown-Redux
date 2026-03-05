@@ -190,10 +190,10 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     runocc          INTEGER,    -- run queue occupancy samples
     swpocc          INTEGER,    -- swap queue occupancy samples
 
-    -- AIX: load average (fixed-point; divide by 65536.0 for float value)
-    loadavg_1       INTEGER,    -- 1-minute  load average (raw FSCALE units)
-    loadavg_5       INTEGER,    -- 5-minute  load average
-    loadavg_15      INTEGER,    -- 15-minute load average
+    -- AIX: load average (already converted to float in JSON; store as REAL)
+    loadavg_1       REAL,       -- 1-minute  load average
+    loadavg_5       REAL,       -- 5-minute  load average
+    loadavg_15      REAL,       -- 15-minute load average
 
     -- AIX: LPAR PURR/SPURR donated/stolen cycle counters (POWER hypervisor)
     idle_donated_purr   INTEGER,
@@ -793,7 +793,7 @@ In a distributed setup with many hosts, row count grows as O(hosts × samples ×
 | Disk read/write IOPS | `disk_devices_linux` | LAG-diff of `read_ios`/`write_ios` ÷ elapsed seconds |
 | Disk read/write bytes/s | `disk_devices_linux` | LAG-diff of `read_sectors`/`write_sectors` × 512 ÷ elapsed seconds (always 512 regardless of physical sector size) |
 | AIX disk read/write bytes/s | `disk_devices_aix` | LAG-diff of `rblks`/`wblks` × 512 ÷ elapsed seconds |
-| AIX load average | `cpu_stats` | `loadavg_1 / 65536.0` |
+| AIX load average | `cpu_stats` | `loadavg_1` (already a float; no conversion needed) |
 | AIX disk IOPS | `disk_total` or `disk_devices_aix` | LAG-diff of `xrate`/`xfers` ÷ elapsed seconds |
 | AIX disk capacity used | `disk_devices_aix` | `size_bytes - free_bytes` |
 
@@ -806,12 +806,12 @@ In a distributed setup with many hosts, row count grows as O(hosts × samples ×
 `LAG()` window functions are available in SQLite 3.25.0+ (released 2018-09-15).
 Any modern OS has a sufficiently recent SQLite. Verify with `SELECT sqlite_version();`.
 
-### AIX loadavg conversion
+### AIX loadavg
 
-The `loadavg_*` fields use AIX's raw FSCALE fixed-point (FSCALE = 65536):
+The `loadavg_*` fields are stored as standard floats (conversion from AIX FSCALE fixed-point happens at collection time in the gatherer). No query-time conversion is needed:
 
 ```sql
-SELECT loadavg_1 / 65536.0 AS load_1min
+SELECT loadavg_1 AS load_1min
 FROM cpu_stats
 WHERE host_id = :host_id
 ORDER BY collected_at DESC
