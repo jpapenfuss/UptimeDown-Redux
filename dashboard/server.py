@@ -26,10 +26,20 @@ DEFAULT_MAX_FILES = 60
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
+    """HTTP request handler for the UptimeDown dashboard.
+
+    Serves the dashboard HTML frontend and provides JSON API endpoints for
+    accessing collected system metrics from the data directory.
+
+    Class attributes:
+        data_dir (Path): Directory containing JSON metric files to serve.
+        max_files (int): Maximum number of recent files to expose via /api/files.
+    """
     data_dir = DEFAULT_DATA_DIR
     max_files = DEFAULT_MAX_FILES
 
     def do_GET(self):
+        """Handle HTTP GET requests with path-based routing."""
         path = self.path.split("?")[0]  # strip query string
         if path in ("/", "/index.html"):
             self._serve_file(DASHBOARD_DIR / "index.html", "text/html; charset=utf-8")
@@ -42,6 +52,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(404, "Not found")
 
     def _serve_file(self, path, content_type):
+        """Serve a file with the specified content type.
+
+        Args:
+            path (Path): File path to serve.
+            content_type (str): MIME type for the Content-Type header.
+        """
         try:
             with open(path, "rb") as f:
                 data = f.read()
@@ -52,8 +68,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         except FileNotFoundError:
             self.send_error(404, "File not found")
+        except (IsADirectoryError, PermissionError, OSError):
+            # Catch other IO errors (directory instead of file, permissions, etc.)
+            self.send_error(400, "Cannot read file")
 
     def _serve_file_list(self):
+        """List the most recent JSON files in the data directory.
+
+        Returns a JSON array of filenames, sorted by modification time (newest first),
+        limited to max_files entries. Returns an empty list if data directory doesn't exist.
+        """
         try:
             data_dir = Path(self.data_dir)
             if not data_dir.exists():
@@ -75,8 +99,16 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.send_error(500, str(e))
 
     def _serve_json_file(self, filename):
-        # Reject path traversal attempts
-        if "/" in filename or "\\" in filename or ".." in filename:
+        """Serve a JSON file from the data directory.
+
+        Path traversal is prevented by validating that the filename contains no
+        path separators (/ or \) or parent directory references (..).
+
+        Args:
+            filename (str): Requested filename from the URL.
+        """
+        # Reject path traversal attempts (/, \, and .. sequences)
+        if not filename or "/" in filename or "\\" in filename or ".." in filename:
             self.send_error(400, "Invalid filename")
             return
         try:
@@ -90,13 +122,21 @@ class DashboardHandler(BaseHTTPRequestHandler):
             self.wfile.write(data)
         except FileNotFoundError:
             self.send_error(404, "File not found")
+        except (IsADirectoryError, PermissionError, OSError):
+            # Catch other IO errors (directory instead of file, permissions, etc.)
+            self.send_error(400, "Cannot read file")
 
     def log_message(self, fmt, *args):
-        # Print minimal access log to stdout
+        """Log HTTP requests to stdout in a minimal format."""
         print(f"{self.address_string()} - {fmt % args}")
 
 
 def main():
+    """Parse command-line arguments and start the HTTP server.
+
+    Configures the DashboardHandler with the specified data directory and
+    max files limit, then starts an HTTP server listening on all interfaces.
+    """
     parser = argparse.ArgumentParser(description="UptimeDown dashboard server")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT,
                         help=f"Port to listen on (default: {DEFAULT_PORT})")
