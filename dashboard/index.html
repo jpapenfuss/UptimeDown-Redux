@@ -153,8 +153,13 @@
   </div>
 
   <div class="chart-box">
-    <div class="chart-title">Memory</div>
+    <div class="chart-title">Memory (GB)</div>
     <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Memory Breakdown (GB)</div>
+    <div class="chart-wrap"><canvas id="memDetailChart"></canvas></div>
   </div>
 
   <div class="chart-box">
@@ -163,8 +168,33 @@
   </div>
 
   <div class="chart-box">
+    <div class="chart-title">Disk I/O Operations (/sec)</div>
+    <div class="chart-wrap"><canvas id="iopsChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
     <div class="chart-title">Network Throughput (MB/s)</div>
     <div class="chart-wrap"><canvas id="netChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Network Packets (/sec)</div>
+    <div class="chart-wrap"><canvas id="netPktsChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Network Errors & Drops</div>
+    <div class="chart-wrap"><canvas id="netErrorChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">System Load Average</div>
+    <div class="chart-wrap"><canvas id="loadChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Context Switches & Processes</div>
+    <div class="chart-wrap"><canvas id="ctxChart"></canvas></div>
   </div>
 
   <div class="chart-box full-width">
@@ -506,6 +536,202 @@ function renderFilesystems(points) {
   });
 }
 
+// ── Memory detail chart ──────────────────────────────────────────────────────
+function renderMemoryDetail(points) {
+  const buffers = [], cached = [], swap = [];
+  for (const p of points) {
+    const mem = p.memory?.memory || p.memory || {};
+    const x = new Date(p.collected_at * 1000);
+    const gb = v => v ? parseFloat((v / 1073741824).toFixed(3)) : 0;
+    buffers.push( { x, y: gb(mem.buffers || 0) });
+    cached.push(  { x, y: gb(mem.cached || 0) });
+    swap.push(    { x, y: gb((mem.swap_total || 0) - (mem.swap_free || 0)) });
+  }
+  makeChart('memDetailChart', 'line', {
+    datasets: [
+      lineDataset('Buffers', C.blue,   buffers, { fill: true }),
+      lineDataset('Cached',  C.green,  cached,  { fill: true }),
+      lineDataset('Swap Used', C.red,  swap,    { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('GB', 0), ticks: { callback: v => v.toFixed(1) + ' GB', maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} GB` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Disk IOPS chart ──────────────────────────────────────────────────────────
+function renderIOPS(points) {
+  const reads = [], writes = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].disks || {};
+    const curr = points[i].disks || {};
+    const x = new Date(points[i].collected_at * 1000);
+    const dt = points[i].collected_at - points[i - 1].collected_at;
+    if (dt <= 0) continue;
+    let dri = 0, dwi = 0;
+    for (const dev of Object.keys(curr)) {
+      const c = curr[dev], p = prev[dev] || {};
+      dri += (c.read_ios  || 0) - (p.read_ios  || 0);
+      dwi += (c.write_ios || 0) - (p.write_ios || 0);
+    }
+    reads.push(  { x, y: parseFloat((dri / dt).toFixed(2)) });
+    writes.push( { x, y: parseFloat((dwi / dt).toFixed(2)) });
+  }
+  makeChart('iopsChart', 'line', {
+    datasets: [
+      lineDataset('Read ops/sec',  C.cyan,   reads,  { fill: true }),
+      lineDataset('Write ops/sec', C.purple, writes, { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('ops/sec', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} ops/s` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Network packets chart ────────────────────────────────────────────────────
+function renderNetworkPackets(points) {
+  const rx = [], tx = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].network || {};
+    const curr = points[i].network || {};
+    const x = new Date(points[i].collected_at * 1000);
+    const dt = points[i].collected_at - points[i - 1].collected_at;
+    if (dt <= 0) continue;
+    let dip = 0, dop = 0;
+    for (const iface of Object.keys(curr)) {
+      if (iface === 'lo') continue;
+      const c = curr[iface], p = prev[iface] || {};
+      dip += (c.ipackets || 0) - (p.ipackets || 0);
+      dop += (c.opackets || 0) - (p.opackets || 0);
+    }
+    rx.push( { x, y: parseFloat((dip / dt).toFixed(0)) });
+    tx.push( { x, y: parseFloat((dop / dt).toFixed(0)) });
+  }
+  makeChart('netPktsChart', 'line', {
+    datasets: [
+      lineDataset('RX pkts/sec', C.green,  rx, { fill: true }),
+      lineDataset('TX pkts/sec', C.yellow, tx, { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('pkts/sec', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} pkts/s` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Network errors & drops ───────────────────────────────────────────────────
+function renderNetworkErrors(points) {
+  const errors = [], drops = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].network || {};
+    const curr = points[i].network || {};
+    const x = new Date(points[i].collected_at * 1000);
+    let de = 0, dd = 0;
+    for (const iface of Object.keys(curr)) {
+      if (iface === 'lo') continue;
+      const c = curr[iface], p = prev[iface] || {};
+      de += ((c.ierrors || 0) + (c.oerrors || 0)) - ((p.ierrors || 0) + (p.oerrors || 0));
+      dd += ((c.idrop || 0) + (c.odrop || 0)) - ((p.idrop || 0) + (p.odrop || 0));
+    }
+    errors.push( { x, y: Math.max(0, de) });
+    drops.push(  { x, y: Math.max(0, dd) });
+  }
+  makeChart('netErrorChart', 'line', {
+    datasets: [
+      lineDataset('Errors', C.red,    errors, { fill: true }),
+      lineDataset('Drops',  C.orange, drops,  { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('count', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── System load average ──────────────────────────────────────────────────────
+function renderLoad(points) {
+  const load1 = [], load5 = [], load15 = [];
+  for (const p of points) {
+    const cpu = p.cpustats || {};
+    const x = new Date(p.collected_at * 1000);
+    // Load averages: if not present, use 0
+    load1.push(  { x, y: parseFloat((cpu.loadavg_1 || 0).toFixed(2)) });
+    load5.push(  { x, y: parseFloat((cpu.loadavg_5 || 0).toFixed(2)) });
+    load15.push( { x, y: parseFloat((cpu.loadavg_15 || 0).toFixed(2)) });
+  }
+  makeChart('loadChart', 'line', {
+    datasets: [
+      lineDataset('1 min',  C.blue,   load1,  { fill: true }),
+      lineDataset('5 min',  C.green,  load5 ),
+      lineDataset('15 min', C.orange, load15 ),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('load', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)}` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Context switches & processes ─────────────────────────────────────────────
+function renderContext(points) {
+  const ctxt = [], procs = [], running = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].cpustats || {};
+    const curr = points[i].cpustats || {};
+    const x = new Date(points[i].collected_at * 1000);
+    const dt = points[i].collected_at - points[i - 1].collected_at;
+    if (dt <= 0) continue;
+    const dctxt = ((curr.ctxt || 0) - (prev.ctxt || 0)) / dt;
+    ctxt.push(   { x, y: parseFloat(dctxt.toFixed(0)) });
+    procs.push(  { x, y: curr.processes || 0 });
+    running.push( { x, y: curr.procs_running || 0 });
+  }
+  makeChart('ctxChart', 'line', {
+    datasets: [
+      lineDataset('Context switches/sec', C.blue,   ctxt,    { fill: true, yAxisID: 'y' }),
+      lineDataset('Total processes',      C.green,  procs,   { yAxisID: 'y1' }),
+      lineDataset('Running processes',    C.red,    running, { yAxisID: 'y1' }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y:  { ...yAxis('ctxt/sec', 0), position: 'left', ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+      y1: { ...yAxis('processes', 0), position: 'right', ticks: { maxTicksLimit: 6 }, grid: { display: false } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y}` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
 // ── Status bar ───────────────────────────────────────────────────────────────
 function setStatus(state, text) {
   const el = document.getElementById('status');
@@ -537,8 +763,14 @@ async function refresh() {
 
     renderCpu(points);
     renderMemory(points);
+    renderMemoryDetail(points);
     renderDisk(points);
+    renderIOPS(points);
     renderNetwork(points);
+    renderNetworkPackets(points);
+    renderNetworkErrors(points);
+    renderLoad(points);
+    renderContext(points);
     renderFilesystems(points);
 
     const latest = new Date(points[points.length - 1].collected_at * 1000);
