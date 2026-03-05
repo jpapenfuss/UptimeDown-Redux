@@ -22,6 +22,7 @@ class Config:
         self.run_interval = 60  # seconds
         self.max_iterations = None  # None = run forever
         self.log_level = "ERROR"  # ERROR or DEBUG
+        self.dump_json = False  # write JSON dumps to collected-data/
         self._load_config()
         if args:
             self._apply_cli_overrides(args)
@@ -66,6 +67,14 @@ class Config:
                 if level in ("DEBUG", "ERROR"):
                     self.log_level = level
 
+        # Load dump_json from [output] section
+        if parser.has_section("output"):
+            if parser.has_option("output", "dump_json"):
+                try:
+                    self.dump_json = parser.getboolean("output", "dump_json")
+                except ValueError:
+                    pass
+
     def _apply_cli_overrides(self, args):
         """Apply command-line argument overrides to config."""
         if args.run_interval is not None:
@@ -84,11 +93,15 @@ class Config:
             if level in ("DEBUG", "ERROR"):
                 self.log_level = level
 
+        if args.dump:
+            self.dump_json = True
+
     def __repr__(self):
         return (
             f"Config(run_interval={self.run_interval}s, "
             f"max_iterations={self.max_iterations}, "
-            f"log_level={self.log_level})"
+            f"log_level={self.log_level}, "
+            f"dump_json={self.dump_json})"
         )
 
 
@@ -131,5 +144,10 @@ Examples:
         "--once",
         action="store_true",
         help="Shorthand for --max-iterations 1 (collect once and exit)",
+    )
+    parser.add_argument(
+        "-d", "--dump",
+        action="store_true",
+        help="Write each collection as a JSON file in collected-data/",
     )
     return parser

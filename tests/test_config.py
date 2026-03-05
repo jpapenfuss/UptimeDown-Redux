@@ -20,6 +20,7 @@ class TestConfigDefaults(unittest.TestCase):
             self.assertEqual(cfg.run_interval, 60)
             self.assertIsNone(cfg.max_iterations)
             self.assertEqual(cfg.log_level, "ERROR")
+            self.assertFalse(cfg.dump_json)
 
 
 class TestConfigIniLoading(unittest.TestCase):
@@ -128,6 +129,17 @@ class TestCliArgumentParsing(unittest.TestCase):
         self.assertIsNone(args.max_iterations)
         self.assertIsNone(args.log_level)
         self.assertFalse(args.once)
+        self.assertFalse(args.dump)
+
+    def test_parse_dump_flag(self):
+        """Test parsing --dump flag."""
+        args = self.parser.parse_args(['--dump'])
+        self.assertTrue(args.dump)
+
+    def test_parse_dump_short(self):
+        """Test parsing -d short form."""
+        args = self.parser.parse_args(['-d'])
+        self.assertTrue(args.dump)
 
     def test_multiple_arguments(self):
         """Test parsing multiple arguments together."""
@@ -182,6 +194,22 @@ class TestCliOverrides(unittest.TestCase):
             args = parser.parse_args(['-i', '2'])
             cfg = Config(args)
             self.assertEqual(cfg.run_interval, 5)
+
+    def test_cli_dump_flag_sets_dump_json(self):
+        """Test that --dump sets dump_json to True."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            parser = create_argument_parser()
+            args = parser.parse_args(['--dump'])
+            cfg = Config(args)
+            self.assertTrue(cfg.dump_json)
+
+    def test_cli_dump_short_sets_dump_json(self):
+        """Test that -d sets dump_json to True."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            parser = create_argument_parser()
+            args = parser.parse_args(['-d'])
+            cfg = Config(args)
+            self.assertTrue(cfg.dump_json)
 
 
 if __name__ == '__main__':
