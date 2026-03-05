@@ -97,6 +97,22 @@ class TestGetCpuTotal(unittest.TestCase):
         for key in ("idle_donated_purr", "busy_stolen_purr", "puser_spurr"):
             self.assertIn(key, result)
 
+    def test_loadavg_converted_to_float(self):
+        """loadavg values must be divided by 65536 at collection time."""
+        lib = MagicMock()
+        def fill(name_p, buf_p, size, count):
+            buf_p._obj.loadavg[0] = 131072   # 2.0
+            buf_p._obj.loadavg[1] = 98304    # 1.5
+            buf_p._obj.loadavg[2] = 65536    # 1.0
+            return 1
+        lib.perfstat_cpu_total.side_effect = fill
+        with patch("aix_cpu._load_libperfstat", return_value=lib), \
+             patch("time.time", return_value=1.0):
+            result = get_cpu_total()
+        self.assertAlmostEqual(result["loadavg_1"],  2.0)
+        self.assertAlmostEqual(result["loadavg_5"],  1.5)
+        self.assertAlmostEqual(result["loadavg_15"], 1.0)
+
     def test_tick_values_from_struct(self):
         """Verify normalization correctly reads struct fields."""
         lib = MagicMock()

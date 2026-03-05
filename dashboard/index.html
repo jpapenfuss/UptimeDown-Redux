@@ -480,13 +480,12 @@ function renderFilesystems(points) {
     .filter(mp => fses[mp].mounted !== false && fses[mp].pct_used != null)
     .sort((a, b) => (fses[b].pct_used || 0) - (fses[a].pct_used || 0));
 
-  // Show top 40 filesystems to avoid overcrowding (60+ WPARs would be unreadable)
-  const maxShow = 40;
+  // Cap at 20 bars; with many filesystems (e.g. WPAR hosts), more is unreadable
+  const maxShow = 20;
   const mounts = allMounts.slice(0, maxShow);
   const truncated = allMounts.length > maxShow;
 
   const pctUsed  = mounts.map(mp => parseFloat((fses[mp].pct_used || 0).toFixed(1)));
-  const pctFree  = mounts.map(mp => parseFloat(((fses[mp].pct_available || fses[mp].pct_free) || 0).toFixed(1)));
 
   // Colour bars by usage level
   const barColors = pctUsed.map(v =>
@@ -494,6 +493,12 @@ function renderFilesystems(points) {
     v >= 75 ? rgba(C.yellow, 0.85) :
               rgba(C.green,  0.85)
   );
+
+  // Set chart height dynamically so bars are readable regardless of count
+  const barHeight = 24;  // px per bar
+  const wrapPad   = 40;  // top/bottom padding
+  document.getElementById('fsChart').parentElement.style.height =
+    Math.max(120, mounts.length * barHeight + wrapPad) + 'px';
 
   const chartTitle = truncated ? `Top ${maxShow} of ${allMounts.length} filesystems` : `All ${mounts.length} filesystems`;
   makeChart('fsChart', 'bar', {

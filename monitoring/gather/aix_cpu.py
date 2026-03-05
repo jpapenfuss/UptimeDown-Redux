@@ -327,11 +327,9 @@ def get_cpu_total(_time=None):
 
     Calls with count=1 to fill a single perfstat_cpu_total_t buffer.
     Skips padding fields (_padN) when building the result dict.
-    The 'loadavg' array is unpacked to a plain Python list and then split
-    into loadavg_1/5/15 keys so they match the schema column names.
-
-    The raw loadavg values from perfstat are fixed-point integers scaled by
-    FSCALE (2^16 = 65536 on AIX). Divide by 65536.0 for the familiar float.
+    The 'loadavg' array is unpacked and split into loadavg_1/5/15 keys.
+    Values are converted from AIX fixed-point (FSCALE = 2^16 = 65536) to
+    standard floats at collection time.
 
     Tick counters (user, sys, idle, wait) are renamed to user_ticks/sys_ticks/
     idle_ticks/iowait_ticks to match the cross-platform cpu_stats schema.
@@ -380,9 +378,9 @@ def get_cpu_total(_time=None):
     raw["idle_ticks"]    = raw.pop("idle")
     raw["iowait_ticks"]  = raw.pop("wait")
     raw["processor_hz"]  = raw.pop("processorHZ")
-    raw["loadavg_1"]     = la[0]
-    raw["loadavg_5"]     = la[1]
-    raw["loadavg_15"]    = la[2]
+    raw["loadavg_1"]     = la[0] / 65536.0
+    raw["loadavg_5"]     = la[1] / 65536.0
+    raw["loadavg_15"]    = la[2] / 65536.0
     result = raw
 
     logger.debug("get_cpu_total: description=%r ncpus=%d processor_hz=%d",
@@ -390,14 +388,7 @@ def get_cpu_total(_time=None):
     logger.debug("get_cpu_total: user_ticks=%d sys_ticks=%d idle_ticks=%d iowait_ticks=%d",
                  result.get("user_ticks", 0), result.get("sys_ticks", 0),
                  result.get("idle_ticks", 0), result.get("iowait_ticks", 0))
-    # loadavg values from perfstat are fixed-point: divide by 2^SBITS (65536) for
-    # a human-readable load average. Log both raw and scaled values.
-    SBITS = 16
-    logger.debug("get_cpu_total: loadavg_1=%.2f loadavg_5=%.2f loadavg_15=%.2f "
-                 "(raw: %d %d %d)",
-                 result.get("loadavg_1", 0) / (1 << SBITS),
-                 result.get("loadavg_5", 0) / (1 << SBITS),
-                 result.get("loadavg_15", 0) / (1 << SBITS),
+    logger.debug("get_cpu_total: loadavg_1=%.2f loadavg_5=%.2f loadavg_15=%.2f",
                  result.get("loadavg_1", 0),
                  result.get("loadavg_5", 0),
                  result.get("loadavg_15", 0))
