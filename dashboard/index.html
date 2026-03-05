@@ -1,0 +1,563 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UptimeDown</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f1117;
+      --surface:  #1a1d27;
+      --border:   #2a2d3a;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --accent:   #3b82f6;
+      --green:    #22c55e;
+      --yellow:   #eab308;
+      --red:      #ef4444;
+      --orange:   #f97316;
+      --purple:   #a855f7;
+      --cyan:     #06b6d4;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+      font-size: 13px;
+      line-height: 1.5;
+      min-height: 100vh;
+    }
+
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 24px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--text);
+    }
+
+    #status {
+      font-size: 12px;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    #status .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      display: inline-block;
+    }
+    #status.ok    .dot { background: var(--green); }
+    #status.error .dot { background: var(--red); }
+
+    #refresh-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 4px 10px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+    }
+    #refresh-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    main {
+      padding: 20px 24px;
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18px;
+    }
+
+    @media (max-width: 900px) {
+      main { grid-template-columns: 1fr; }
+    }
+
+    .chart-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px 12px;
+    }
+
+    .chart-box.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .chart-title {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    .chart-wrap {
+      position: relative;
+      height: 200px;
+    }
+
+    .chart-box.full-width .chart-wrap {
+      height: 180px;
+    }
+
+    #error-banner {
+      display: none;
+      background: #3b1010;
+      border: 1px solid var(--red);
+      color: #fca5a5;
+      padding: 10px 18px;
+      margin: 16px 24px 0;
+      border-radius: 6px;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>UptimeDown</h1>
+  <div id="status">
+    <span class="dot"></span>
+    <span id="status-text">Loading…</span>
+    <button id="refresh-btn" onclick="refresh()">Refresh</button>
+  </div>
+</header>
+
+<div id="error-banner"></div>
+
+<main>
+  <div class="chart-box">
+    <div class="chart-title">CPU Usage (%)</div>
+    <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Memory</div>
+    <div class="chart-wrap"><canvas id="memChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Disk I/O (MB/s)</div>
+    <div class="chart-wrap"><canvas id="diskChart"></canvas></div>
+  </div>
+
+  <div class="chart-box">
+    <div class="chart-title">Network Throughput (MB/s)</div>
+    <div class="chart-wrap"><canvas id="netChart"></canvas></div>
+  </div>
+
+  <div class="chart-box full-width">
+    <div class="chart-title">Filesystem Usage (%)</div>
+    <div class="chart-wrap"><canvas id="fsChart"></canvas></div>
+  </div>
+</main>
+
+<script>
+// ── Configuration ────────────────────────────────────────────────────────────
+const CONFIG = {
+  maxFiles:        60,   // how many recent JSON files to load
+  refreshInterval: 30,   // seconds between auto-refreshes (0 = disabled)
+};
+
+// ── Chart instances ──────────────────────────────────────────────────────────
+const charts = {};
+
+// ── Chart.js defaults ────────────────────────────────────────────────────────
+Chart.defaults.color = '#64748b';
+Chart.defaults.borderColor = '#2a2d3a';
+Chart.defaults.font.family = 'ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace';
+Chart.defaults.font.size = 11;
+
+// ── Colour palette ───────────────────────────────────────────────────────────
+const C = {
+  blue:   '#3b82f6',
+  green:  '#22c55e',
+  yellow: '#eab308',
+  red:    '#ef4444',
+  orange: '#f97316',
+  purple: '#a855f7',
+  cyan:   '#06b6d4',
+  muted:  '#64748b',
+};
+
+function rgba(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Shared axis/plugin config ────────────────────────────────────────────────
+function timeXAxis() {
+  return {
+    type: 'time',
+    time: { tooltipFormat: 'HH:mm:ss', displayFormats: { second: 'HH:mm:ss', minute: 'HH:mm' } },
+    ticks: { maxTicksLimit: 8 },
+    grid: { color: '#2a2d3a' },
+  };
+}
+
+function yAxis(label, min) {
+  return {
+    min: min ?? 0,
+    title: { display: !!label, text: label, color: '#64748b' },
+    grid: { color: '#2a2d3a' },
+    ticks: { maxTicksLimit: 6 },
+  };
+}
+
+function lineDataset(label, color, data, opts) {
+  return {
+    label,
+    data,
+    borderColor: color,
+    backgroundColor: rgba(color, 0.12),
+    fill: opts?.fill ?? false,
+    tension: 0.3,
+    pointRadius: 2,
+    pointHoverRadius: 4,
+    borderWidth: 1.5,
+    ...opts,
+  };
+}
+
+function makeChart(id, type, data, options) {
+  const ctx = document.getElementById(id).getContext('2d');
+  if (charts[id]) charts[id].destroy();
+  charts[id] = new Chart(ctx, { type, data, options: { responsive: true, maintainAspectRatio: false, animation: false, ...options } });
+  return charts[id];
+}
+
+// ── Data loading ─────────────────────────────────────────────────────────────
+async function fetchFiles() {
+  const res = await fetch('/api/files');
+  if (!res.ok) throw new Error(`/api/files → ${res.status}`);
+  return res.json();
+}
+
+async function fetchData(filename) {
+  const res = await fetch(`/api/data/${encodeURIComponent(filename)}`);
+  if (!res.ok) throw new Error(`/api/data/${filename} → ${res.status}`);
+  return res.json();
+}
+
+async function loadAllData() {
+  const files = await fetchFiles();
+  const recent = files.slice(0, CONFIG.maxFiles);
+  const results = await Promise.all(recent.map(f => fetchData(f).catch(() => null)));
+  const points = results
+    .filter(Boolean)
+    .sort((a, b) => a.collected_at - b.collected_at);
+  return points;
+}
+
+// ── CPU chart ────────────────────────────────────────────────────────────────
+// Computes percentage from tick deltas between consecutive samples.
+// Keys (Linux): user_ticks, nice_ticks, sys_ticks, idle_ticks, iowait_ticks,
+//               irq_ticks, softirq_ticks, steal_ticks
+// Keys (AIX):   user_ticks, sys_ticks, idle_ticks, iowait_ticks
+function buildCpuSeries(points) {
+  const user = [], sys = [], iowait = [], other = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].cpustats || {};
+    const curr = points[i].cpustats || {};
+    const x = new Date(points[i].collected_at * 1000);
+
+    const du = (curr.user_ticks   || 0) - (prev.user_ticks   || 0);
+    const dn = (curr.nice_ticks   || 0) - (prev.nice_ticks   || 0);
+    const ds = (curr.sys_ticks    || 0) - (prev.sys_ticks    || 0);
+    const di = (curr.idle_ticks   || 0) - (prev.idle_ticks   || 0);
+    const dw = (curr.iowait_ticks || 0) - (prev.iowait_ticks || 0);
+    const dr = (curr.irq_ticks    || 0) - (prev.irq_ticks    || 0);
+    const dq = (curr.softirq_ticks|| 0) - (prev.softirq_ticks|| 0);
+    const dt = (curr.steal_ticks  || 0) - (prev.steal_ticks  || 0);
+
+    const total = du + dn + ds + di + dw + dr + dq + dt;
+    if (total <= 0) continue;
+
+    const pct = v => parseFloat((v / total * 100).toFixed(2));
+    user.push(   { x, y: pct(du + dn) });
+    sys.push(    { x, y: pct(ds)      });
+    iowait.push( { x, y: pct(dw)      });
+    other.push(  { x, y: pct(dr + dq + dt) });
+  }
+  return { user, sys, iowait, other };
+}
+
+function renderCpu(points) {
+  const { user, sys, iowait, other } = buildCpuSeries(points);
+  makeChart('cpuChart', 'line', {
+    datasets: [
+      lineDataset('User',   C.blue,   user,   { fill: true }),
+      lineDataset('System', C.orange, sys,    { fill: true }),
+      lineDataset('I/O Wait', C.yellow, iowait, { fill: true }),
+      lineDataset('Other',  C.muted,  other,  { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis(null, 0), max: 100, stacked: false,
+           ticks: { callback: v => v + '%', maxTicksLimit: 6 },
+           grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Memory chart ─────────────────────────────────────────────────────────────
+function renderMemory(points) {
+  const used = [], avail = [], total = [];
+  for (const p of points) {
+    const mem = p.memory?.memory || p.memory || {};
+    const x = new Date(p.collected_at * 1000);
+    const tot = mem.mem_total || 0;
+    const free = mem.mem_free || 0;
+    const av   = mem.mem_available ?? (free);
+    const usedBytes = tot - av;
+    const gb = v => parseFloat((v / 1073741824).toFixed(3));
+    total.push( { x, y: gb(tot) });
+    used.push(  { x, y: gb(usedBytes) });
+    avail.push( { x, y: gb(av) });
+  }
+  makeChart('memChart', 'line', {
+    datasets: [
+      lineDataset('Total',     C.muted,  total, { borderDash: [4,4] }),
+      lineDataset('Used',      C.red,    used,  { fill: true }),
+      lineDataset('Available', C.green,  avail  ),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('GB', 0), ticks: { callback: v => v.toFixed(0) + ' GB', maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} GB` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Disk I/O chart ───────────────────────────────────────────────────────────
+// Aggregates all block devices. Sectors are 512 bytes.
+function renderDisk(points) {
+  const reads = [], writes = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].disks || {};
+    const curr = points[i].disks || {};
+    const x = new Date(points[i].collected_at * 1000);
+    const dt = points[i].collected_at - points[i - 1].collected_at;
+    if (dt <= 0) continue;
+
+    let drs = 0, dws = 0;
+    for (const dev of Object.keys(curr)) {
+      const c = curr[dev], p = prev[dev] || {};
+      drs += (c.read_sectors  || 0) - (p.read_sectors  || 0);
+      dws += (c.write_sectors || 0) - (p.write_sectors || 0);
+    }
+    const mbps = v => parseFloat((v * 512 / 1048576 / dt).toFixed(3));
+    reads.push(  { x, y: mbps(drs) });
+    writes.push( { x, y: mbps(dws) });
+  }
+  makeChart('diskChart', 'line', {
+    datasets: [
+      lineDataset('Read MB/s',  C.cyan,   reads,  { fill: true }),
+      lineDataset('Write MB/s', C.purple, writes, { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('MB/s', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} MB/s` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Network chart ────────────────────────────────────────────────────────────
+function renderNetwork(points) {
+  const rx = [], tx = [];
+  for (let i = 1; i < points.length; i++) {
+    const prev = points[i - 1].network || {};
+    const curr = points[i].network || {};
+    const x = new Date(points[i].collected_at * 1000);
+    const dt = points[i].collected_at - points[i - 1].collected_at;
+    if (dt <= 0) continue;
+
+    let dib = 0, dob = 0;
+    for (const iface of Object.keys(curr)) {
+      // Skip loopback
+      if (iface === 'lo') continue;
+      const c = curr[iface], p = prev[iface] || {};
+      dib += (c.ibytes || 0) - (p.ibytes || 0);
+      dob += (c.obytes || 0) - (p.obytes || 0);
+    }
+    const mbps = v => parseFloat((v / 1048576 / dt).toFixed(4));
+    rx.push( { x, y: mbps(dib) });
+    tx.push( { x, y: mbps(dob) });
+  }
+  makeChart('netChart', 'line', {
+    datasets: [
+      lineDataset('RX MB/s', C.green,  rx, { fill: true }),
+      lineDataset('TX MB/s', C.yellow, tx, { fill: true }),
+    ],
+  }, {
+    scales: {
+      x: timeXAxis(),
+      y: { ...yAxis('MB/s', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
+    },
+    plugins: {
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(3)} MB/s` } },
+      legend: { labels: { boxWidth: 10, padding: 12 } },
+    },
+  });
+}
+
+// ── Filesystem chart ─────────────────────────────────────────────────────────
+// Uses the most recent snapshot only (point-in-time, not a time series).
+function renderFilesystems(points) {
+  if (!points.length) return;
+  const latest = points[points.length - 1];
+  const fses = latest.filesystems || {};
+
+  const mounts = Object.keys(fses)
+    .filter(mp => fses[mp].mounted !== false && fses[mp].pct_used != null)
+    .sort();
+
+  const pctUsed  = mounts.map(mp => parseFloat((fses[mp].pct_used || 0).toFixed(1)));
+  const pctFree  = mounts.map(mp => parseFloat(((fses[mp].pct_available || fses[mp].pct_free) || 0).toFixed(1)));
+
+  // Colour bars by usage level
+  const barColors = pctUsed.map(v =>
+    v >= 90 ? rgba(C.red,    0.85) :
+    v >= 75 ? rgba(C.yellow, 0.85) :
+              rgba(C.green,  0.85)
+  );
+
+  makeChart('fsChart', 'bar', {
+    labels: mounts,
+    datasets: [
+      {
+        label: 'Used %',
+        data: pctUsed,
+        backgroundColor: barColors,
+        borderColor: barColors,
+        borderWidth: 0,
+        borderRadius: 3,
+      },
+    ],
+  }, {
+    indexAxis: 'y',
+    scales: {
+      x: {
+        min: 0, max: 100,
+        grid: { color: '#2a2d3a' },
+        ticks: { callback: v => v + '%', maxTicksLimit: 6 },
+      },
+      y: {
+        grid: { display: false },
+        ticks: { font: { size: 11 } },
+      },
+    },
+    plugins: {
+      tooltip: {
+        callbacks: {
+          label: ctx => {
+            const mp = ctx.label;
+            const fs = fses[mp] || {};
+            const gb = v => v ? (v / 1073741824).toFixed(1) + ' GB' : '?';
+            return [
+              `  Used: ${ctx.parsed.x}%`,
+              `  Total: ${gb(fs.bytes_total)}`,
+              `  Available: ${gb(fs.bytes_available || fs.bytes_free)}`,
+              `  Type: ${fs.vfs || '?'}`,
+            ];
+          },
+          title: ctx => ctx[0].label,
+        },
+      },
+      legend: { display: false },
+    },
+  });
+}
+
+// ── Status bar ───────────────────────────────────────────────────────────────
+function setStatus(state, text) {
+  const el = document.getElementById('status');
+  el.className = state;
+  document.getElementById('status-text').textContent = text;
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function clearError() {
+  document.getElementById('error-banner').style.display = 'none';
+}
+
+// ── Main refresh ─────────────────────────────────────────────────────────────
+async function refresh() {
+  setStatus('', 'Loading…');
+  clearError();
+  try {
+    const points = await loadAllData();
+    if (!points.length) {
+      setStatus('error', 'No data files found');
+      showError('No JSON files found in collected-data/. Run the monitor with log_level = DEBUG in config.ini to generate data.');
+      return;
+    }
+
+    renderCpu(points);
+    renderMemory(points);
+    renderDisk(points);
+    renderNetwork(points);
+    renderFilesystems(points);
+
+    const latest = new Date(points[points.length - 1].collected_at * 1000);
+    const ts = latest.toLocaleTimeString();
+    setStatus('ok', `${points.length} samples · last ${ts}`);
+  } catch (err) {
+    setStatus('error', 'Error loading data');
+    showError(`Failed to load data: ${err.message}`);
+    console.error(err);
+  }
+}
+
+// ── Auto-refresh ─────────────────────────────────────────────────────────────
+if (CONFIG.refreshInterval > 0) {
+  setInterval(refresh, CONFIG.refreshInterval * 1000);
+}
+
+// Initial load
+refresh();
+</script>
+</body>
+</html>

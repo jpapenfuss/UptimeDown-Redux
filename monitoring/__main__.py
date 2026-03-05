@@ -129,11 +129,13 @@ def dump_json_file(json_string, logger):
     """Dump JSON output to a file with uuid-timestamp naming.
 
     Filename format: <uuid>-<timestamp>.json
-    Uses current Unix timestamp as the timestamp component.
-    Attempts to write to current directory; silently fails if not writable.
+    Writes to the collected-data/ subdirectory of the current directory,
+    creating it if needed. Silently fails if not writable.
     """
     try:
-        filename = f"{uuid.uuid4()}-{int(time.time())}.json"
+        data_dir = "collected-data"
+        os.makedirs(data_dir, exist_ok=True)
+        filename = os.path.join(data_dir, f"{uuid.uuid4()}-{int(time.time())}.json")
         with open(filename, 'w') as f:
             f.write(json_string)
         logger.debug(f"Wrote JSON dump to {filename}")
@@ -174,8 +176,8 @@ def main():
         print_timings(timings)
         print(jsonout)
 
-        # Dump JSON to file if DEBUG logging is enabled
-        if cfg.log_level == "DEBUG":
+        # Dump JSON to file if enabled (via --dump flag or config.ini [output] dump_json)
+        if cfg.dump_json:
             dump_json_file(jsonout, logger)
 
         # Check if we should exit
