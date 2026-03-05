@@ -475,9 +475,15 @@ function renderFilesystems(points) {
   const latest = points[points.length - 1];
   const fses = latest.filesystems || {};
 
-  const mounts = Object.keys(fses)
+  // Get mounted filesystems with usage data, sort by usage descending
+  const allMounts = Object.keys(fses)
     .filter(mp => fses[mp].mounted !== false && fses[mp].pct_used != null)
-    .sort();
+    .sort((a, b) => (fses[b].pct_used || 0) - (fses[a].pct_used || 0));
+
+  // Show top 40 filesystems to avoid overcrowding (60+ WPARs would be unreadable)
+  const maxShow = 40;
+  const mounts = allMounts.slice(0, maxShow);
+  const truncated = allMounts.length > maxShow;
 
   const pctUsed  = mounts.map(mp => parseFloat((fses[mp].pct_used || 0).toFixed(1)));
   const pctFree  = mounts.map(mp => parseFloat(((fses[mp].pct_available || fses[mp].pct_free) || 0).toFixed(1)));
@@ -489,6 +495,7 @@ function renderFilesystems(points) {
               rgba(C.green,  0.85)
   );
 
+  const chartTitle = truncated ? `Top ${maxShow} of ${allMounts.length} filesystems` : `All ${mounts.length} filesystems`;
   makeChart('fsChart', 'bar', {
     labels: mounts,
     datasets: [
@@ -529,9 +536,16 @@ function renderFilesystems(points) {
             ];
           },
           title: ctx => ctx[0].label,
+          afterLabel: () => truncated ? `(showing top ${maxShow} by usage)` : '',
         },
       },
       legend: { display: false },
+      subtitle: {
+        text: chartTitle,
+        display: true,
+        color: '#64748b',
+        font: { size: 11 },
+      },
     },
   });
 }
