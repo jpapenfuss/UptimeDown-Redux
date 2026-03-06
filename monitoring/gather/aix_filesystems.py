@@ -121,6 +121,8 @@ class AixFilesystems:
                 entry["f_files"]  = st.f_files
                 entry["f_ffree"]  = st.f_ffree
                 entry["f_favail"] = st.f_favail
+                entry["f_flag"]    = st.f_flag
+                entry["f_namemax"] = st.f_namemax
                 if st.f_blocks > 0:
                     entry["bytes_total"]     = st.f_frsize * st.f_blocks
                     entry["bytes_free"]      = st.f_frsize * st.f_bfree

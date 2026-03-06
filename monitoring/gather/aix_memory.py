@@ -7,7 +7,7 @@
 #            The 'slabs' key is always None (no AIX equivalent).
 #
 # Output keys in stats['memory'] are normalized to match the schema:
-#   Shared with Linux: mem_total, mem_free, mem_cached, swap_total, swap_free
+#   Shared with Linux: mem_total, mem_free, cached, swap_total, swap_free
 #   AIX-only: real_pinned, real_inuse, real_system, real_user, real_process,
 #             virt_total, virt_active, pgsp_rsvd,
 #             pgbad, pgexct, pgins, pgouts, pgspins, pgspouts,
@@ -77,7 +77,7 @@ def get_memory_total(_time=None):
     Normalized keys shared with the Linux memory gatherer:
         mem_total    — total RAM in bytes        (real_total * PAGE_SIZE)
         mem_free     — free RAM in bytes         (real_free  * PAGE_SIZE)
-        mem_cached   — file cache in bytes       (numperm    * PAGE_SIZE)
+        cached       — file cache in bytes       (numperm    * PAGE_SIZE)
         swap_total   — total paging space bytes  (pgsp_total * PAGE_SIZE)
         swap_free    — free paging space bytes   (pgsp_free  * PAGE_SIZE)
 
@@ -119,7 +119,7 @@ def get_memory_total(_time=None):
         # --- Normalized keys (shared with Linux) ---
         "mem_total":    buf.real_total   * p,
         "mem_free":     buf.real_free    * p,
-        "mem_cached":   buf.numperm      * p,   # file cache; Linux: 'Cached'
+        "cached":       buf.numperm      * p,   # file cache; matches Linux 'Cached' → 'cached'
         "swap_total":   buf.pgsp_total   * p,
         "swap_free":    buf.pgsp_free    * p,
 
@@ -146,8 +146,8 @@ def get_memory_total(_time=None):
     }
 
     gb = 1024 ** 3
-    logger.debug("get_memory_total: mem_total=%.2f GB mem_free=%.2f GB mem_cached=%.2f GB",
-                 result["mem_total"] / gb, result["mem_free"] / gb, result["mem_cached"] / gb)
+    logger.debug("get_memory_total: mem_total=%.2f GB mem_free=%.2f GB cached=%.2f GB",
+                 result["mem_total"] / gb, result["mem_free"] / gb, result["cached"] / gb)
     logger.debug("get_memory_total: real_inuse=%.2f GB real_pinned=%.2f GB virt_total=%.2f GB",
                  result["real_inuse"] / gb, result["real_pinned"] / gb, result["virt_total"] / gb)
     logger.debug("get_memory_total: swap_total=%.2f GB swap_free=%.2f GB pgsp_rsvd=%.2f GB",
@@ -165,7 +165,7 @@ class AixMemory:
         stats["memory"] — normalized memory stats dict from
                           perfstat_memory_total_t, with page values converted
                           to bytes and keys shared with Linux where applicable.
-        stats["slabs"]  — always None (no AIX equivalent of /proc/slabinfo).
+        stats["slabs"]  — always False (no AIX equivalent of /proc/slabinfo).
     """
 
     def UpdateValues(self):
@@ -174,7 +174,7 @@ class AixMemory:
         ts = getattr(self, '_ts', None)
         self.stats = {
             "memory": get_memory_total(ts),
-            "slabs":  None,
+            "slabs":  False,
         }
         logger.debug("AixMemory.UpdateValues: complete (ok=%s)",
                      self.stats["memory"] is not False)
@@ -205,6 +205,6 @@ if __name__ == "__main__":
             print(f"\n  RAM total:  {mem['mem_total']  / gb:.2f} GB")
             print(f"  RAM free:   {mem['mem_free']   / gb:.2f} GB")
             print(f"  RAM inuse:  {mem['real_inuse'] / gb:.2f} GB")
-            print(f"  Cached:     {mem['mem_cached'] / gb:.2f} GB")
+            print(f"  Cached:     {mem['cached'] / gb:.2f} GB")
             print(f"  Swap total: {mem['swap_total'] / gb:.2f} GB")
             print(f"  Swap free:  {mem['swap_free']  / gb:.2f} GB")

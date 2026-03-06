@@ -1,10 +1,10 @@
-# Linux network interface gatherer. Reads /proc/net/dev.
+# Linux network interface gatherer. Reads /proc/net/dev and /sys/class/net.
 #
 # Exposes a Network class. After instantiation:
 #   interfaces — dict keyed by interface name (e.g. 'eth0', 'lo'), each entry
-#                containing all /proc/net/dev counters.
+#                containing /proc/net/dev counters plus metadata (mtu, speed, operstate).
 #
-# All counter fields are cumulative since boot; compute rates by differencing
+# Counter fields are cumulative since boot; compute rates by differencing
 # adjacent samples at query time (see SCHEMA.md).
 #
 # /proc/net/dev format (16 fields per interface after the name):
@@ -43,24 +43,66 @@ NET_DEV_KEYS = (
 )
 
 
+def _read_metadata(iface):
+    """Read interface metadata from /sys/class/net.
+
+    Attempts to read mtu, speed (Mbps), and operstate. Returns a dict with
+    available fields. Missing files are silently omitted.
+
+    Returns a dict with any of: mtu (int), speed (int), operstate (str).
+    """
+    metadata = {}
+    sysfs_base = f"/sys/class/net/{iface}"
+
+    # Read MTU (maximum transmission unit in bytes).
+    try:
+        with open(f"{sysfs_base}/mtu", "r") as f:
+            metadata["mtu"] = int(f.read().strip())
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    # Read link speed in Mbps. Non-existent for virtual interfaces like lo.
+    try:
+        with open(f"{sysfs_base}/speed", "r") as f:
+            speed_val = int(f.read().strip())
+            # -1 means unknown/unavailable; omit it to avoid confusion.
+            if speed_val >= 0:
+                metadata["speed_mbps"] = speed_val
+    except (FileNotFoundError, ValueError, OSError):
+        pass
+
+    # Read operational state (up/down/dormant/notpresent/lowerlayerdown/testing).
+    try:
+        with open(f"{sysfs_base}/operstate", "r") as f:
+            operstate = f.read().strip()
+            if operstate:
+                metadata["operstate"] = operstate
+    except (FileNotFoundError, OSError):
+        pass
+
+    return metadata
+
+
 class Network:
-    """Linux network interface gatherer. Reads /proc/net/dev.
+    """Linux network interface gatherer. Reads /proc/net/dev and /sys/class/net.
 
     After instantiation:
         interfaces — dict keyed by interface name (e.g. 'eth0', 'lo'), each entry
-                     containing the 16 counters from NET_DEV_KEYS.
+                     containing the 16 counters from NET_DEV_KEYS plus optional
+                     metadata: mtu (int), speed_mbps (int), operstate (str).
 
-    All counter fields are cumulative since boot. Compute rates by differencing
-    adjacent samples at query time.
+    Counter fields are cumulative since boot. Compute rates by differencing
+    adjacent samples at query time. Metadata fields are instantaneous state values.
     """
 
     proc_net_dev_path = "/proc/net/dev"
 
     def get_interfaces(self, _time=None):
-        """Parse /proc/net/dev and return a dict of per-interface counters.
+        """Parse /proc/net/dev and augment with metadata from /sys/class/net.
 
-        Each entry is keyed by interface name (e.g. 'eth0', 'lo') and contains
-        integer counters mapped by NET_DEV_KEYS.
+        Each entry is keyed by interface name (e.g. 'eth0', 'lo') and contains:
+        - Counters from NET_DEV_KEYS (ibytes, ipackets, etc., 16 fields)
+        - Metadata if available: mtu, speed_mbps, operstate
 
         /proc/net/dev format:
             Line 1: "Inter-|   Receive ..."        (human-readable header, skipped)
@@ -93,17 +135,21 @@ class Network:
                 colon = line.index(":")
                 iface = line[:colon].strip()
                 fields = line[colon + 1:].split()
-                interfaces[iface] = util.dict_from_fields(fields, NET_DEV_KEYS)
+                entry = util.dict_from_fields(fields, NET_DEV_KEYS)
+                # Augment with metadata from /sys/class/net.
+                entry.update(_read_metadata(iface))
+                interfaces[iface] = entry
                 line = reader.readline()
         logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
         for iface, stats in interfaces.items():
             logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
-                         "idrop=%d odrop=%d ipackets=%d opackets=%d",
+                         "idrop=%d odrop=%d ipackets=%d opackets=%d mtu=%s speed=%s",
                          iface,
                          stats["ibytes"], stats["obytes"],
                          stats["ierrors"], stats["oerrors"],
                          stats["idrop"], stats["odrop"],
-                         stats["ipackets"], stats["opackets"])
+                         stats["ipackets"], stats["opackets"],
+                         stats.get("mtu", "?"), stats.get("speed_mbps", "?"))
         return interfaces
 
     def __init__(self, _time=None):

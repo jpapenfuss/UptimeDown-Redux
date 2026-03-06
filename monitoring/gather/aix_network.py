@@ -144,7 +144,7 @@ def get_interfaces(_time=None):
             "obytes":       buf.obytes,
             "oerrors":      buf.oerrors,
             "collisions":   buf.collisions,
-            "bitrate":      buf.bitrate,
+            "speed_mbps":   buf.bitrate // 1_000_000,  # bps → Mbps; matches Linux speed_mbps
             "if_iqdrops":   buf.if_iqdrops,
             "if_arpdrops":  buf.if_arpdrops,
         }
@@ -152,9 +152,9 @@ def get_interfaces(_time=None):
     logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
     for iface, e in interfaces.items():
         logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
-                     "bitrate=%d if_iqdrops=%d if_arpdrops=%d",
+                     "speed_mbps=%d if_iqdrops=%d if_arpdrops=%d",
                      iface, e["ibytes"], e["obytes"], e["ierrors"], e["oerrors"],
-                     e["bitrate"], e["if_iqdrops"], e["if_arpdrops"])
+                     e["speed_mbps"], e["if_iqdrops"], e["if_arpdrops"])
     return interfaces
 
 

@@ -286,6 +286,15 @@ def get_cpus(_time=None):
         logger.error(f"perfstat_cpu enumeration returned {ret}, expected {ncpus}")
         return False
 
+    # Tick field renames: match the cross-platform cpu_stats schema so per-CPU
+    # dicts use the same keys as get_cpu_total() and Linux per-core dicts.
+    _PER_CPU_RENAMES = {
+        "user": "user_ticks",
+        "sys":  "sys_ticks",
+        "idle": "idle_ticks",
+        "wait": "iowait_ticks",
+    }
+
     # Convert to dict keyed by CPU name
     result = {}
     for i in range(ncpus):
@@ -310,8 +319,9 @@ def get_cpus(_time=None):
                 # Online state is typically 0x01; offline is 0x00
                 cpu_dict["state"] = "online" if state_byte > 0 else "offline"
             else:
-                # Keep all numeric fields as-is
-                cpu_dict[field_name] = val
+                # Rename tick fields for cross-platform consistency; keep others as-is.
+                out_name = _PER_CPU_RENAMES.get(field_name, field_name)
+                cpu_dict[out_name] = val
 
         result[cpu_name] = cpu_dict
 

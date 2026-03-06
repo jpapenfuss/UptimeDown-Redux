@@ -40,11 +40,13 @@ ETC_FILESYSTEMS_SAMPLE = """\
 
 
 def _make_statvfs(f_frsize=4096, f_blocks=1000000, f_bfree=600000, f_bavail=550000,
-                  f_bsize=4096, f_files=200000, f_ffree=180000, f_favail=180000):
+                  f_bsize=4096, f_files=200000, f_ffree=180000, f_favail=180000,
+                  f_flag=0, f_namemax=255):
     return SimpleNamespace(
         f_bsize=f_bsize, f_frsize=f_frsize, f_blocks=f_blocks,
         f_bfree=f_bfree, f_bavail=f_bavail, f_files=f_files,
         f_ffree=f_ffree, f_favail=f_favail,
+        f_flag=f_flag, f_namemax=f_namemax,
     )
 
 
@@ -163,6 +165,15 @@ class TestGetFilesystems(unittest.TestCase):
         result = self._run()
         self.assertEqual(result["/"]["mountpoint"], "/")
         self.assertEqual(result["/home"]["mountpoint"], "/home")
+
+    def test_f_flag_and_f_namemax_present(self):
+        st = _make_statvfs(f_flag=4096, f_namemax=255)
+        result = self._run(statvfs_side_effect=st)
+        entry = result["/"]
+        self.assertIn("f_flag", entry)
+        self.assertIn("f_namemax", entry)
+        self.assertEqual(entry["f_flag"], 4096)
+        self.assertEqual(entry["f_namemax"], 255)
 
 
 class TestAixFilesystemsInit(unittest.TestCase):
