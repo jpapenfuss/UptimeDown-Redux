@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Self-contained test for AIX perfstat ctypes wrappers.
+"""Self-contained probe for AIX perfstat ctypes wrappers.
 
 Copy this single file to an AIX 7.x box and run:
-    python3 test_aix_cpu.py
+    python3 docs/aix-probes/aix_cpu_probe.py
 
-Tests perfstat_cpu_total and perfstat_partition_total.
+Probes perfstat_cpu_total and perfstat_partition_total.
 """
 
 import ctypes

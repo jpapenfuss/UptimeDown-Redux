@@ -18,23 +18,39 @@ import time
 import uuid
 import os
 
-from log_setup import log_setup
-from identity import get_system_id
-from config import Config, create_argument_parser
+# Support both `python3 monitoring` (script-style) and `python3 -m monitoring`
+# (package-style) execution modes.
+if __package__:
+    from .log_setup import log_setup
+    from .identity import get_system_id
+    from .config import Config, create_argument_parser
+else:
+    from log_setup import log_setup
+    from identity import get_system_id
+    from config import Config, create_argument_parser
 
 # sys.platform values: "linux", "aix", "darwin", "freebsd7" ... "freebsd14", etc.
 _PLATFORM = sys.platform
 _SYSTEM_ID = get_system_id()
 
 if _PLATFORM == "aix":
-    from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory, aix_network
+    if __package__:
+        from .gather import aix_cpu, aix_disk, aix_filesystems, aix_memory, aix_network
+    else:
+        from gather import aix_cpu, aix_disk, aix_filesystems, aix_memory, aix_network
 elif _PLATFORM == "linux":
-    from gather import linux_cpu, linux_disk, linux_memory, linux_filesystems, linux_network
+    if __package__:
+        from .gather import linux_cpu, linux_disk, linux_memory, linux_filesystems, linux_network
+    else:
+        from gather import linux_cpu, linux_disk, linux_memory, linux_filesystems, linux_network
 else:
     raise RuntimeError(f"Unsupported platform: {_PLATFORM!r}")
 
 # Cloud metadata gatherer — platform-agnostic, fast-fails on non-cloud machines.
-from gather import aws
+if __package__:
+    from .gather import aws
+else:
+    from gather import aws
 
 
 def collect_once(logger, json_module):

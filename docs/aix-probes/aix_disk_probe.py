@@ -2,7 +2,7 @@
 """Self-contained AIX disk and filesystem exploration via libperfstat + statvfs.
 
 Copy this single file to an AIX 7.x box and run:
-    python3 test_aix_disk.py
+    python3 docs/aix-probes/aix_disk_probe.py
 
 Calls:
   1. perfstat_disk_total()  - aggregate disk stats
