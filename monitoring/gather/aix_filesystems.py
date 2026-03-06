@@ -18,7 +18,10 @@ import logging
 import os
 import time
 
-from . import util
+try:
+    from . import util
+except ImportError:  # Support direct-module imports in unit tests.
+    import util  # type: ignore
 
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
