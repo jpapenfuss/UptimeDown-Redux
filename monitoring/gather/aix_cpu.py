@@ -388,6 +388,7 @@ def get_cpu_total(_time=None):
     raw["idle_ticks"]    = raw.pop("idle")
     raw["iowait_ticks"]  = raw.pop("wait")
     raw["processor_hz"]  = raw.pop("processorHZ")
+    raw["ctxt"]          = raw.pop("pswitch")    # context switches; matches Linux ctxt
     raw["loadavg_1"]     = la[0] / 65536.0
     raw["loadavg_5"]     = la[1] / 65536.0
     raw["loadavg_15"]    = la[2] / 65536.0

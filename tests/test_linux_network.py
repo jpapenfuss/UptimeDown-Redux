@@ -3,11 +3,11 @@ import io
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, mock_open
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from monitoring.gather import linux_network
-from monitoring.gather.linux_network import Network, NET_DEV_KEYS
+from monitoring.gather.linux_network import Network, NET_DEV_KEYS, _read_metadata
 
 # ---------------------------------------------------------------------------
 # Sample /proc/net/dev content
@@ -91,6 +91,54 @@ class TestGetInterfaces(unittest.TestCase):
         content = "Inter-|...\n face |...\n"
         result = self._run(content)
         self.assertEqual(result, {})
+
+
+class TestReadMetadata(unittest.TestCase):
+    """Tests for _read_metadata(): sysfs field collection including interface type."""
+
+    def _open_factory(self, path_contents):
+        """Return a side_effect callable that maps sysfs paths to fake file contents."""
+        def fake_open(path, *args, **kwargs):
+            if path in path_contents:
+                return io.StringIO(path_contents[path])
+            raise FileNotFoundError(path)
+        return fake_open
+
+    def test_type_read_from_sysfs(self):
+        with patch("builtins.open", side_effect=self._open_factory({
+            "/sys/class/net/eth0/type": "1\n",
+            "/sys/class/net/eth0/mtu": "1500\n",
+        })):
+            result = _read_metadata("eth0")
+        self.assertEqual(result["type"], 1)
+
+    def test_loopback_type_value(self):
+        with patch("builtins.open", side_effect=self._open_factory({
+            "/sys/class/net/lo/type": "24\n",
+        })):
+            result = _read_metadata("lo")
+        self.assertEqual(result["type"], 24)
+
+    def test_type_absent_when_file_missing(self):
+        with patch("builtins.open", side_effect=FileNotFoundError):
+            result = _read_metadata("eth0")
+        self.assertNotIn("type", result)
+
+    def test_type_absent_when_file_has_invalid_content(self):
+        with patch("builtins.open", side_effect=self._open_factory({
+            "/sys/class/net/eth0/type": "not-a-number\n",
+        })):
+            result = _read_metadata("eth0")
+        self.assertNotIn("type", result)
+
+    def test_mtu_and_type_both_collected(self):
+        with patch("builtins.open", side_effect=self._open_factory({
+            "/sys/class/net/eth0/mtu": "1500\n",
+            "/sys/class/net/eth0/type": "1\n",
+        })):
+            result = _read_metadata("eth0")
+        self.assertEqual(result["mtu"], 1500)
+        self.assertEqual(result["type"], 1)
 
 
 class TestNetworkInit(unittest.TestCase):

@@ -46,10 +46,11 @@ NET_DEV_KEYS = (
 def _read_metadata(iface):
     """Read interface metadata from /sys/class/net.
 
-    Attempts to read mtu, speed (Mbps), and operstate. Returns a dict with
-    available fields. Missing files are silently omitted.
+    Attempts to read mtu, speed (Mbps), operstate, and type. Returns a dict
+    with available fields. Missing files are silently omitted.
 
-    Returns a dict with any of: mtu (int), speed (int), operstate (str).
+    Returns a dict with any of: mtu (int), speed_mbps (int), operstate (str),
+    type (int, ARPHRD code: 1=Ethernet, 24=loopback; matches AIX interface type).
     """
     metadata = {}
     sysfs_base = f"/sys/class/net/{iface}"
@@ -78,6 +79,14 @@ def _read_metadata(iface):
             if operstate:
                 metadata["operstate"] = operstate
     except (FileNotFoundError, OSError):
+        pass
+
+    # Read interface type (ARPHRD code). Matches AIX perfstat 'type' field.
+    # Common values: 1=Ethernet, 24=loopback, 772=loopback (older kernels).
+    try:
+        with open(f"{sysfs_base}/type", "r") as f:
+            metadata["type"] = int(f.read().strip())
+    except (FileNotFoundError, ValueError, OSError):
         pass
 
     return metadata

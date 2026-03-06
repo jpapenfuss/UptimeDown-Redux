@@ -89,8 +89,15 @@ class TestGetInterfaces(unittest.TestCase):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=1.0):
             result = get_interfaces()
-        for key in ("mtu", "speed_mbps", "if_iqdrops", "if_arpdrops", "description", "type"):
+        for key in ("mtu", "speed_mbps", "idrop", "if_arpdrops", "description", "type"):
             self.assertIn(key, result["en0"])
+
+    def test_if_iqdrops_renamed_to_idrop(self):
+        with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
+             patch("time.time", return_value=1.0):
+            result = get_interfaces()
+        self.assertIn("idrop", result["en0"])
+        self.assertNotIn("if_iqdrops", result["en0"])
 
     def test_bitrate_renamed_to_speed_mbps(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
