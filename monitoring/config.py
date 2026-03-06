@@ -24,6 +24,8 @@ class Config:
         self.log_level = "ERROR"  # ERROR or DEBUG
         self.dump_json = False  # write JSON dumps to collected-data/
         self.data_dir = "collected-data"  # directory for JSON dumps
+        self.gatherer_intervals = {}  # name -> int seconds; empty = all use run_interval
+        self.base_tick = 1  # seconds — how often the main loop wakes to check gatherers
         self._load_config()
         if args:
             self._apply_cli_overrides(args)
@@ -61,12 +63,32 @@ class Config:
                 except ValueError:
                     pass
 
+            # Load base_tick — how often the main loop wakes to check gatherers
+            if parser.has_option("daemon", "base_tick"):
+                try:
+                    val = parser.getint("daemon", "base_tick")
+                    if val >= 1:
+                        self.base_tick = val
+                except ValueError:
+                    pass
+
         # Load log_level from [logging] section
         if parser.has_section("logging"):
             if parser.has_option("logging", "level"):
                 level = parser.get("logging", "level").upper()
                 if level in ("DEBUG", "ERROR"):
                     self.log_level = level
+
+        # Load per-gatherer intervals from [intervals] section
+        if parser.has_section("intervals"):
+            for name in ("cpu", "memory", "disk", "filesystems", "network", "cloud"):
+                if parser.has_option("intervals", name):
+                    try:
+                        val = parser.getint("intervals", name)
+                        if val >= 5:
+                            self.gatherer_intervals[name] = val
+                    except ValueError:
+                        pass
 
         # Load output settings from [output] section
         if parser.has_section("output"):
@@ -107,10 +129,12 @@ class Config:
     def __repr__(self):
         return (
             f"Config(run_interval={self.run_interval}s, "
+            f"base_tick={self.base_tick}s, "
             f"max_iterations={self.max_iterations}, "
             f"log_level={self.log_level}, "
             f"dump_json={self.dump_json}, "
-            f"data_dir={self.data_dir!r})"
+            f"data_dir={self.data_dir!r}, "
+            f"gatherer_intervals={self.gatherer_intervals!r})"
         )
 
 

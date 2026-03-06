@@ -24,10 +24,12 @@ if __package__:
     from .log_setup import log_setup
     from .identity import get_system_id
     from .config import Config, create_argument_parser
+    from .scheduler import GathererScheduler
 else:
     from log_setup import log_setup
     from identity import get_system_id
     from config import Config, create_argument_parser
+    from scheduler import GathererScheduler
 
 # sys.platform values: "linux", "aix", "darwin", "freebsd7" ... "freebsd14", etc.
 _PLATFORM = sys.platform
@@ -53,92 +55,76 @@ else:
     from gather import aws
 
 
-def collect_once(logger, json_module):
-    """Collect metrics once and return (json_string, timings_dict)."""
-    timestart = time.time()
+# ---------------------------------------------------------------------------
+# Per-gatherer collect functions.
+#
+# Each returns a flat dict of {json_key: value} pairs that get merged into
+# the final JSON output. This makes it trivial to later put individual keys
+# on different intervals — just split into separate gatherer entries.
+# ---------------------------------------------------------------------------
 
-    # Single timestamp for this collection run. All data tables in the database
-    # use this value as collected_at, ensuring cross-subsystem joins work on
-    # exact equality. Rounded to milliseconds to survive JSON round-tripping
-    # without float-precision drift.
-    collected_at = round(time.time(), 3)
+def _gather_cloud():
+    return {"cloud": aws.AwsCloud(round(time.time(), 3)).metadata}
 
-    # Cloud metadata — runs on all platforms; fast-fails (TCP probe) on non-cloud machines.
-    timebeforecloud = time.time()
-    mycloud = aws.AwsCloud(collected_at)
-    timeaftercloud = time.time()
 
-    if _PLATFORM == "aix":
-        timebeforecpu = time.time()
-        mycpu    = aix_cpu.AixCpu(collected_at)
-        mydisk   = aix_disk.AixDisk(collected_at)
-        myfs     = aix_filesystems.AixFilesystems(collected_at)
-        mymemory = aix_memory.AixMemory(collected_at)
-        mynet    = aix_network.AixNetwork(collected_at)
-        timeafterfs = time.time()
+if _PLATFORM == "linux":
+    def _gather_cpu():
+        obj = linux_cpu.Cpu(round(time.time(), 3))
+        return {"cpustats": obj.cpustat_values, "cpuinfo": obj.cpuinfo_values}
 
-        timebeforejson = time.time()
-        # Capture ncpus_enumerated separately for consistency tracking during SMT transitions
-        ncpus_enumerated = len(mycpu.cpus) if mycpu.cpus and mycpu.cpus is not False else 0
-        cpustats_with_enum = dict(mycpu.cpustat_values) if mycpu.cpustat_values else {}
-        cpustats_with_enum["ncpus_enumerated"] = ncpus_enumerated
+    def _gather_memory():
+        return {"memory": linux_memory.Memory(round(time.time(), 3)).stats}
 
-        jsonout = json_module.dumps({
-            "system_id":   _SYSTEM_ID,
-            "collected_at": collected_at,
-            "cloud":       mycloud.metadata,
-            "cpustats":    cpustats_with_enum,
-            "cpus":        mycpu.cpus,
-            "disks":       mydisk.blockdevices,
-            "disk_total":  mydisk.disk_total,
-            "filesystems": myfs.filesystems,
-            "memory":      mymemory.stats,
-            "network":     mynet.interfaces,
-        }, indent=4)
-        timeafterjson = time.time()
+    def _gather_disk():
+        return {"disks": linux_disk.Disk(round(time.time(), 3)).blockdevices}
 
-        timeend = time.time()
-        timings = {
-            'total': timeend - timestart,
-            'startup': timebeforecpu - timestart,
-            'cloud': timeaftercloud - timebeforecloud,
-            'gather': timeafterfs - timebeforecpu,
-            'json': timeafterjson - timebeforejson,
-        }
+    def _gather_filesystems():
+        return {"filesystems": linux_filesystems.Filesystems(round(time.time(), 3)).filesystems}
 
-    elif _PLATFORM == "linux":
-        timebeforecpu = time.time()
-        mycpu    = linux_cpu.Cpu(collected_at)
-        mydisk   = linux_disk.Disk(collected_at)
-        mymemory = linux_memory.Memory(collected_at)
-        myfs     = linux_filesystems.Filesystems(collected_at)
-        mynet    = linux_network.Network(collected_at)
-        timeafterfs = time.time()
+    def _gather_network():
+        return {"network": linux_network.Network(round(time.time(), 3)).interfaces}
 
-        timebeforejson = time.time()
-        jsonout = json_module.dumps({
-            "system_id":   _SYSTEM_ID,
-            "collected_at": collected_at,
-            "cloud":       mycloud.metadata,
-            "cpustats":    mycpu.cpustat_values,
-            "cpuinfo":     mycpu.cpuinfo_values,
-            "disks":       mydisk.blockdevices,
-            "memory":      mymemory.stats,
-            "filesystems": myfs.filesystems,
-            "network":     mynet.interfaces,
-        }, indent=4)
-        timeafterjson = time.time()
+elif _PLATFORM == "aix":
+    def _gather_cpu():
+        obj = aix_cpu.AixCpu(round(time.time(), 3))
+        # Capture ncpus_enumerated for consistency tracking during SMT transitions
+        ncpus_enumerated = len(obj.cpus) if obj.cpus and obj.cpus is not False else 0
+        cpustats = dict(obj.cpustat_values) if obj.cpustat_values else {}
+        cpustats["ncpus_enumerated"] = ncpus_enumerated
+        return {"cpustats": cpustats, "cpus": obj.cpus}
 
-        timeend = time.time()
-        timings = {
-            'total': timeend - timestart,
-            'startup': timebeforecpu - timestart,
-            'cloud': timeaftercloud - timebeforecloud,
-            'gather': timeafterfs - timebeforecpu,
-            'json': timeafterjson - timebeforejson,
-        }
+    def _gather_memory():
+        return {"memory": aix_memory.AixMemory(round(time.time(), 3)).stats}
 
-    return jsonout, timings
+    def _gather_disk():
+        obj = aix_disk.AixDisk(round(time.time(), 3))
+        return {"disks": obj.blockdevices, "disk_total": obj.disk_total}
+
+    def _gather_filesystems():
+        return {"filesystems": aix_filesystems.AixFilesystems(round(time.time(), 3)).filesystems}
+
+    def _gather_network():
+        return {"network": aix_network.AixNetwork(round(time.time(), 3)).interfaces}
+
+
+def _build_gatherers():
+    """Return ordered dict of name -> collect_fn for the current platform."""
+    return {
+        "cloud":       _gather_cloud,
+        "cpu":         _gather_cpu,
+        "memory":      _gather_memory,
+        "disk":        _gather_disk,
+        "filesystems": _gather_filesystems,
+        "network":     _gather_network,
+    }
+
+
+def _assemble_json(cache, collected_at, json_module):
+    """Merge gatherer cache into a single JSON string."""
+    output = {"system_id": _SYSTEM_ID, "collected_at": collected_at}
+    for data in cache.values():
+        output.update(data)
+    return json_module.dumps(output, indent=4)
 
 
 def dump_json_file(json_string, logger, data_dir):
@@ -159,12 +145,9 @@ def dump_json_file(json_string, logger, data_dir):
 
 
 def print_timings(timings):
-    """Print collection timings."""
-    print(f"Time between start and finish: \t\t\t\t{timings['total']}")
-    print(f"Time from start to before gathering: \t\t\t{timings['startup']}")
-    print(f"Time for cloud metadata probe: \t\t\t\t{timings['cloud']}")
-    print(f"Time for all gatherers (CPU, disk, memory, fs, net): \t{timings['gather']}")
-    print(f"Time to generate json: \t\t\t\t\t{timings['json']}")
+    """Print per-gatherer collection timings for this tick."""
+    for name, elapsed in sorted(timings.items()):
+        print(f"  Collected {name}: {elapsed:.4f}s")
 
 
 def main():
@@ -179,13 +162,27 @@ def main():
     import json
     cfg = Config(args)
 
+    scheduler = GathererScheduler(
+        _build_gatherers(),
+        cfg.gatherer_intervals,
+        cfg.run_interval,
+        cfg.base_tick,
+    )
+
     iteration = 0
 
     while True:
-        iteration += 1
+        cache, timings = scheduler.tick()
 
-        # Collect metrics
-        jsonout, timings = collect_once(logger, json)
+        if not scheduler.ready:
+            # Shouldn't happen on first tick (all gatherers start as due),
+            # but guard against partial initialisation just in case.
+            time.sleep(scheduler.base_tick)
+            continue
+
+        iteration += 1
+        collected_at = round(time.time(), 3)
+        jsonout = _assemble_json(cache, collected_at, json)
 
         # Print diagnostics and JSON
         print_timings(timings)
@@ -199,8 +196,9 @@ def main():
         if cfg.max_iterations is not None and iteration >= cfg.max_iterations:
             break
 
-        # Sleep until next collection
-        time.sleep(cfg.run_interval)
+        # Sleep until next check — base_tick controls polling cadence.
+        # Gatherers are only re-collected when their individual interval elapses.
+        time.sleep(scheduler.base_tick)
 
 
 if __name__ == "__main__":

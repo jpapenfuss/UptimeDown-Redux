@@ -22,6 +22,8 @@ class TestConfigDefaults(unittest.TestCase):
             self.assertEqual(cfg.log_level, "ERROR")
             self.assertFalse(cfg.dump_json)
             self.assertEqual(cfg.data_dir, "collected-data")
+            self.assertEqual(cfg.gatherer_intervals, {})
+            self.assertEqual(cfg.base_tick, 1)
 
 
 class TestConfigIniLoading(unittest.TestCase):
@@ -236,6 +238,108 @@ class TestCliOverrides(unittest.TestCase):
             args = parser.parse_args(['--data-dir', '/var/log/metrics'])
             cfg = Config(args)
             self.assertEqual(cfg.data_dir, '/var/log/metrics')
+
+
+class TestGathererIntervalsLoading(unittest.TestCase):
+    """Test loading [intervals] section from config.ini."""
+
+    def _make_parser(self, options):
+        """Return a mock ConfigParser that has only the [intervals] section
+        with the given {option: value} dict."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "intervals"
+        mock_parser.has_option.side_effect = lambda s, o: s == "intervals" and o in options
+        mock_parser.getint.side_effect = lambda s, o: options[o]
+        return mock_parser
+
+    def test_load_single_interval(self):
+        mock_parser = self._make_parser({"cpu": 10})
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.gatherer_intervals.get("cpu"), 10)
+
+    def test_load_multiple_intervals(self):
+        mock_parser = self._make_parser({"cpu": 5, "memory": 30, "disk": 120})
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.gatherer_intervals["cpu"], 5)
+                self.assertEqual(cfg.gatherer_intervals["memory"], 30)
+                self.assertEqual(cfg.gatherer_intervals["disk"], 120)
+
+    def test_interval_below_minimum_ignored(self):
+        """Values below 5 seconds must be silently dropped."""
+        mock_parser = self._make_parser({"cpu": 2})
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertNotIn("cpu", cfg.gatherer_intervals)
+
+    def test_interval_exactly_minimum_accepted(self):
+        mock_parser = self._make_parser({"network": 5})
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.gatherer_intervals["network"], 5)
+
+    def test_no_intervals_section_leaves_empty_dict(self):
+        mock_parser = MagicMock()
+        mock_parser.has_section.return_value = False
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.gatherer_intervals, {})
+
+    def test_unknown_gatherer_name_not_loaded(self):
+        """Only the known gatherer names (cpu, memory, etc.) are read."""
+        mock_parser = self._make_parser({"bogus": 60})
+        # bogus key is not in the known list, so has_option returns False for it
+        mock_parser.has_option.side_effect = lambda s, o: False
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertNotIn("bogus", cfg.gatherer_intervals)
+
+    def test_prime_valued_intervals_accepted(self):
+        """Prime-number intervals are valid and should be stored as-is."""
+        mock_parser = self._make_parser({"cpu": 13, "memory": 17, "disk": 37})
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.gatherer_intervals["cpu"], 13)
+                self.assertEqual(cfg.gatherer_intervals["memory"], 17)
+                self.assertEqual(cfg.gatherer_intervals["disk"], 37)
+
+
+class TestBaseTick(unittest.TestCase):
+    """Test loading base_tick from config.ini [daemon] section."""
+
+    def test_default_base_tick(self):
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            cfg = Config()
+            self.assertEqual(cfg.base_tick, 1)
+
+    def test_load_base_tick_from_ini(self):
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "daemon"
+        mock_parser.has_option.side_effect = lambda s, o: s == "daemon" and o == "base_tick"
+        mock_parser.getint.return_value = 5
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.base_tick, 5)
+
+    def test_base_tick_below_minimum_ignored(self):
+        """base_tick values below 1 are rejected; default (1) is kept."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "daemon"
+        mock_parser.has_option.side_effect = lambda s, o: s == "daemon" and o == "base_tick"
+        mock_parser.getint.return_value = 0
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.base_tick, 1)  # unchanged default
 
 
 if __name__ == '__main__':
