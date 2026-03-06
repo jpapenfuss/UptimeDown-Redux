@@ -284,6 +284,67 @@ class TestGetCpuSoftIrqs(unittest.TestCase):
         self.assertIs(result, False)
 
 
+LOADAVG_SAMPLE = "0.42 1.23 2.10 3/456 78910\n"
+LOADAVG_SHORT  = "0.42\n"  # malformed — fewer than 3 fields
+
+
+class TestGetLoadAvg(unittest.TestCase):
+    """Tests for GetLoadAvg(): /proc/loadavg parsing and error paths."""
+
+    def _make_loadavg(self, content):
+        with patch("monitoring.gather.util.caniread", return_value=True), \
+             patch("builtins.open", lambda *a, **kw: io.StringIO(content)):
+            cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
+            return cpu.GetLoadAvg()
+
+    def test_returns_dict(self):
+        result = self._make_loadavg(LOADAVG_SAMPLE)
+        self.assertIsInstance(result, dict)
+
+    def test_loadavg_values_parsed(self):
+        result = self._make_loadavg(LOADAVG_SAMPLE)
+        self.assertAlmostEqual(result["loadavg_1"],  0.42)
+        self.assertAlmostEqual(result["loadavg_5"],  1.23)
+        self.assertAlmostEqual(result["loadavg_15"], 2.10)
+
+    def test_values_are_floats(self):
+        result = self._make_loadavg(LOADAVG_SAMPLE)
+        self.assertIsInstance(result["loadavg_1"],  float)
+        self.assertIsInstance(result["loadavg_5"],  float)
+        self.assertIsInstance(result["loadavg_15"], float)
+
+    def test_returns_false_when_unreadable(self):
+        with patch("monitoring.gather.util.caniread", return_value=False):
+            cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
+            result = cpu.GetLoadAvg()
+        self.assertIs(result, False)
+
+    def test_returns_false_when_malformed(self):
+        result = self._make_loadavg(LOADAVG_SHORT)
+        self.assertIs(result, False)
+
+    def test_merged_into_cpustat_values(self):
+        """UpdateValues() must merge load averages into cpustat_values."""
+        def fake_open(path, *a, **kw):
+            if "loadavg" in path:
+                return io.StringIO(LOADAVG_SAMPLE)
+            if "softirqs" in path:
+                return io.StringIO(SOFTIRQS_SAMPLE)
+            return io.StringIO(STAT_SAMPLE)
+
+        with patch("monitoring.gather.util.caniread", return_value=True), \
+             patch("builtins.open", side_effect=fake_open), \
+             patch("time.time", return_value=3000.0):
+            cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
+            cpu._ts = 3000.0
+            cpu.cpuinfo_values = {}
+            cpu.UpdateValues()
+
+        self.assertAlmostEqual(cpu.cpustat_values["loadavg_1"],  0.42)
+        self.assertAlmostEqual(cpu.cpustat_values["loadavg_5"],  1.23)
+        self.assertAlmostEqual(cpu.cpustat_values["loadavg_15"], 2.10)
+
+
 class TestUpdateValues(unittest.TestCase):
     """Tests for Cpu.UpdateValues() and Cpu.__init__() wiring."""
 
