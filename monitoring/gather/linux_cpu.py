@@ -90,15 +90,10 @@ class Cpu:
                     continue
                 split[0] = split[0].strip()
                 split[1] = split[1].strip()
-                if split[0] in self.INTEGER_STATS:
-                    cpuinfo_values[split[0]] = int(split[1])
-                elif split[0] in self.FLOAT_STATS:
-                    cpuinfo_values[split[0]] = float(split[1])
-                elif split[0] in self.LIST_STATS:
-                    # flags and bugs are space-separated capability strings.
-                    cpuinfo_values[split[0]] = split[1].split()
-                else:
-                    cpuinfo_values[split[0]] = split[1]
+                cpuinfo_values[split[0]] = util.coerce_field(
+                    split[1], split[0],
+                    self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
+                )
                 cpuinfo_line = str(reader.readline()).strip()
         nfields = len(cpuinfo_values)
         logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
@@ -184,9 +179,7 @@ class Cpu:
                     split = stat_line.split()
                     # cpu_name is "cpu" for the aggregate row, "cpuN" for each core.
                     cpu_name = split.pop(0)
-                    cpustats_values[cpu_name] = dict(
-                        zip(cpustats_labels, map(int, split))
-                    )
+                    cpustats_values[cpu_name] = util.dict_from_fields(split, cpustats_labels)
                     # Softirqs are merged in after the per-CPU section is fully read.
                     cpustats_values[cpu_name]["softirqs"] = {}
                 elif stat_line.startswith("intr"):
@@ -199,15 +192,14 @@ class Cpu:
                 else:
                     split = stat_line.split()
                     key = split.pop(0)
-                    if key in self.INTEGER_STATS:
-                        cpustats_values[key] = int(split[0])
-                    elif key in self.FLOAT_STATS:
-                        cpustats_values[key] = float(split[0])
-                    elif key == "softirq":
+                    if key == "softirq":
                         # "softirq" line: total followed by per-type counts.
                         cpustats_values[key] = list(map(int, split))
                     else:
-                        cpustats_values[key] = split
+                        cpustats_values[key] = util.coerce_field(
+                            split[0], key,
+                            self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
+                        )
                 stat_line = str(reader.readline()).strip()
 
         # Promote aggregate CPU row's tick counters to top-level schema column names

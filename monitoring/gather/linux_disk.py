@@ -139,7 +139,7 @@ class Disk:
                     continue
                 # Pop the device name from index 2 before zipping the counters.
                 diskname = diskstats_line.pop(2)
-                diskstats[diskname] = dict(zip(DISKSTAT_KEYS, map(int, diskstats_line)))
+                diskstats[diskname] = util.dict_from_fields(diskstats_line, DISKSTAT_KEYS)
                 diskstats_line = str(reader.readline()).strip().split()
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
         for devname, s in diskstats.items():

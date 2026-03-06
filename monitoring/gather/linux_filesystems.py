@@ -62,26 +62,6 @@ class Filesystems:
     the internal fs_reject list to avoid redundant calls on future polls.
     """
 
-    @staticmethod
-    def _parse_options(options_str):
-        """Parse a comma-separated mount options string into a dict.
-
-        Bare flags (e.g. 'rw', 'noatime') map to True.
-        Key=value pairs (e.g. 'size=1g', 'uid=0') map to the value string.
-        The result is intended to be stored as JSON via json.dumps().
-        """
-        opts = {}
-        for token in options_str.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            if "=" in token:
-                k, _, v = token.partition("=")
-                opts[k.strip()] = v.strip()
-            else:
-                opts[token] = True
-        return opts
-
     def get_filesystems(self):
         """Determine the best available mount source and return parsed filesystems.
 
@@ -146,14 +126,10 @@ class Filesystems:
         fs_stats["bytes_total"]     = fs_stats["f_frsize"] * fs_stats["f_blocks"]
         fs_stats["bytes_free"]      = fs_stats["f_frsize"] * fs_stats["f_bfree"]
         fs_stats["bytes_available"] = fs_stats["f_frsize"] * fs_stats["f_bavail"]
-        try:
-            fs_stats["pct_free"]      = int((fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pct_available"] = int((fs_stats["f_bavail"] / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pct_used"]      = int((1.0 - fs_stats["f_bfree"]  / fs_stats["f_blocks"]) * 1000000) / 10000
-            fs_stats["pct_reserved"]  = int(((fs_stats["f_bfree"] - fs_stats["f_bavail"]) / fs_stats["f_blocks"]) * 1000000) / 10000
-        except ZeroDivisionError:
-            # Should be unreachable: we already excluded f_blocks == 0 above.
-            raise RuntimeError(f"ZeroDivisionError on f_blocks for a mount with f_blocks != 0")
+        percentages = util.calculate_percentages(
+            fs_stats["f_bfree"], fs_stats["f_bavail"], fs_stats["f_blocks"]
+        )
+        fs_stats.update(percentages)
         return fs_stats
 
     def get_filesystems_from_proc(self, proc_mounts_path, _time=None):
@@ -220,7 +196,7 @@ class Filesystems:
             "mountpoint": mount[1],
             "dev":        mount[0],
             "vfs":        mount[2],
-            "options":    json.dumps(self._parse_options(mount[3])),
+            "options":    json.dumps(util.parse_mount_options(mount[3])),
             "mounted":    True,
         }
         entry.update(fs_stats)

@@ -93,7 +93,7 @@ class Network:
                 colon = line.index(":")
                 iface = line[:colon].strip()
                 fields = line[colon + 1:].split()
-                interfaces[iface] = dict(zip(NET_DEV_KEYS, map(int, fields)))
+                interfaces[iface] = util.dict_from_fields(fields, NET_DEV_KEYS)
                 line = reader.readline()
         logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
         for iface, stats in interfaces.items():
