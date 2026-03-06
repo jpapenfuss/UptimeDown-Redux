@@ -18,6 +18,8 @@ import logging
 import os
 import time
 
+from . import util
+
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
@@ -36,26 +38,6 @@ class AixFilesystems:
                            entries. Unmounted entries carry dev/vfs/type/etc
                            from /etc/filesystems config with mounted=False.
     """
-
-    @staticmethod
-    def _parse_options(options_str):
-        """Parse a comma-separated mount options string into a dict.
-
-        Bare flags (e.g. 'rw', 'noatime') map to True.
-        Key=value pairs (e.g. 'size=1g', 'uid=0') map to the value string.
-        The result is intended to be stored as JSON via json.dumps().
-        """
-        opts = {}
-        for token in options_str.split(","):
-            token = token.strip()
-            if not token:
-                continue
-            if "=" in token:
-                k, _, v = token.partition("=")
-                opts[k.strip()] = v.strip()
-            else:
-                opts[token] = True
-        return opts
 
     def get_filesystems(self, _time=None):
         """Parse /etc/filesystems and enrich with statvfs where mounted.
@@ -123,7 +105,7 @@ class AixFilesystems:
                 "mount":      attrs.get("mount", ""),
                 "type":       attrs.get("type", ""),
                 "account":    attrs.get("account", ""),
-                "options":    json.dumps(self._parse_options(attrs.get("options", ""))),
+                "options":    json.dumps(util.parse_mount_options(attrs.get("options", ""))),
             }
             try:
                 st = os.statvfs(mountpoint)
@@ -140,10 +122,8 @@ class AixFilesystems:
                     entry["bytes_total"]     = st.f_frsize * st.f_blocks
                     entry["bytes_free"]      = st.f_frsize * st.f_bfree
                     entry["bytes_available"] = st.f_frsize * st.f_bavail
-                    entry["pct_free"]        = int((st.f_bfree  / st.f_blocks) * 1000000) / 10000
-                    entry["pct_available"]   = int((st.f_bavail / st.f_blocks) * 1000000) / 10000
-                    entry["pct_used"]        = int((1.0 - st.f_bfree  / st.f_blocks) * 1000000) / 10000
-                    entry["pct_reserved"]    = int(((st.f_bfree - st.f_bavail) / st.f_blocks) * 1000000) / 10000
+                    percentages = util.calculate_percentages(st.f_bfree, st.f_bavail, st.f_blocks)
+                    entry.update(percentages)
                     logger.debug("get_filesystems:   mounted  %s (%s, %s) %.1f%% used",
                                  mountpoint, entry["dev"], entry["vfs"],
                                  entry["pct_used"])

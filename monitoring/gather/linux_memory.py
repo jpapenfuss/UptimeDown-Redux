@@ -28,26 +28,6 @@ class Memory:
     
     """
 
-    @staticmethod
-    def _meminfo_key(raw):
-        """Normalize a /proc/meminfo field name to snake_case.
-
-        Examples:
-            MemTotal        → mem_total
-            HugePages_Total → huge_pages_total
-            SReclaimable    → s_reclaimable
-        """
-        import re
-        # Insert underscore before each uppercase letter that follows a
-        # lowercase letter or digit (camelCase boundary).
-        s = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', raw)
-        # Handle names that start with a run of uppercase letters (e.g. SReclaimable,
-        # SUnreclaim, KReclaimable) where the first regex finds no lowercase→uppercase
-        # boundary.  Match an uppercase letter followed by another uppercase+lowercase
-        # pair and insert the underscore between them.
-        s = re.sub(r'([A-Z])([A-Z][a-z])', r'\1_\2', s)
-        return s.lower()
-
     def GetMeminfo(self, _time=None):
         """Parse /proc/meminfo and return a dict of memory statistics.
 
@@ -77,7 +57,7 @@ class Memory:
                 # Example after split: ["MemTotal", "16384", "kB"]
                 meminfo_line = meminfo_line.replace(":", " ")
                 line = meminfo_line.split()
-                key = self._meminfo_key(line[0])
+                key = util.to_snake_case(line[0])
                 line[1] = int(line[1])
                 # Three tokens means there's a unit multiplier (e.g. "kB").
                 if len(line) == 3:
