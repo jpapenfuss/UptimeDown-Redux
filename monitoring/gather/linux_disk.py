@@ -54,29 +54,6 @@ DISKSTAT_KEYS = (
     "flush_ticks",
 )
 
-# /sys/block/<dev>/ attributes that get_sys_stats() would read if implemented.
-BLOCK_FILES = [
-    "inflight",
-    "size",
-    "queue/discard_granularity",
-    "queue/hw_sector_size",
-    "queue/io_poll",
-    "queue/io_poll_delay",
-    "queue/io_timeout",
-    "queue/iostats",
-    "queue/logical_block_size",
-    "queue/max_hw_sectors_kb",
-    "queue/max_sectors_kb",
-    "queue/minimum_io_size",
-    "queue/nomerges",
-    "queue/optimal_io_size",
-    "queue/physical_block_size",
-    "queue/read_ahead_kb",
-    "queue/rotational",
-    "queue/rq_affinity",
-    "queue/scheduler",
-    "queue/write_cache",
-]
 
 
 class Disk:
@@ -150,23 +127,92 @@ class Disk:
                          s.get("read_sectors", 0), s.get("write_sectors", 0))
         return diskstats
 
+    def get_queue(self, queue_path):
+        """Read queue/* sysfs attributes for a block device.
+
+        queue_path is the absolute path to the device's queue/ directory,
+        e.g. "/sys/dev/block/8:0/queue".
+
+        Returns a dict with any of:
+            rotational          (int) — 1=HDD, 0=SSD/NVMe
+            physical_block_size (int) — physical sector size in bytes
+            logical_block_size  (int) — logical sector size in bytes
+            scheduler           (str) — active I/O scheduler name (the bracketed entry)
+            discard_granularity (int) — discard/TRIM granularity in bytes
+        Missing files are silently omitted.
+        """
+        result = {}
+
+        def _read_int(name):
+            try:
+                with open(os.path.join(queue_path, name), "r") as f:
+                    return int(f.read().strip())
+            except (FileNotFoundError, ValueError, OSError):
+                return None
+
+        for attr in ("rotational", "physical_block_size", "logical_block_size",
+                     "discard_granularity"):
+            val = _read_int(attr)
+            if val is not None:
+                result[attr] = val
+
+        # scheduler: "none [mq-deadline] bfq" — extract the bracketed token.
+        try:
+            with open(os.path.join(queue_path, "scheduler"), "r") as f:
+                sched_line = f.read().strip()
+            import re
+            m = re.search(r"\[([^\]]+)\]", sched_line)
+            if m:
+                result["scheduler"] = m.group(1)
+        except (FileNotFoundError, OSError):
+            pass
+
+        return result
+
     def get_sys_stats(self, devnum):
-        """Stub: will read /sys/dev/block/<major>:<minor>/ for a given device.
+        """Read /sys/dev/block/<major>:<minor>/ for a given device.
 
         devnum is a "major:minor" string (e.g. "8:0").  The symlink at
-        /sys/dev/block/<devnum> resolves to the device's sysfs directory,
-        which may represent a whole disk, a partition, an md array, a dm
-        device, or an NVMe namespace — each with a different sub-tree shape.
-        Not yet implemented.
-        """
-        pass
+        /sys/dev/block/<devnum> resolves to the device's sysfs directory.
+        Reads size_bytes from the "size" file (sectors × 512), then calls
+        get_queue() to enrich with queue attributes.
 
-    def get_queue(self, queue):
-        """Stub: will read queue/* sysfs attributes for a block device.
+        For partition entries the queue/ subdirectory does not exist; in that
+        case get_queue() is called on the parent device's queue/ instead (one
+        level up, i.e. "../queue").
 
-        Not yet implemented. See BLOCK_FILES for the intended attribute list.
+        Returns a dict with size_bytes and any queue attributes on success,
+        or an empty dict if the sysfs path cannot be resolved.
         """
-        return 0
+        symlink = os.path.join(self.sys_dev_block_path, devnum)
+        try:
+            dev_path = os.path.realpath(symlink)
+        except OSError:
+            logger.debug("get_sys_stats: realpath failed for %s", symlink)
+            return {}
+
+        result = {}
+
+        # Read device size in 512-byte sectors.
+        try:
+            with open(os.path.join(dev_path, "size"), "r") as f:
+                sectors = int(f.read().strip())
+            result["size_bytes"] = sectors * 512
+        except (FileNotFoundError, ValueError, OSError):
+            pass
+
+        # Prefer the device's own queue/; fall back to parent's for partitions.
+        queue_path = os.path.join(dev_path, "queue")
+        if not os.path.isdir(queue_path):
+            queue_path = os.path.join(dev_path, "..", "queue")
+        result.update(self.get_queue(queue_path))
+
+        logger.debug("get_sys_stats: %s → %s size_bytes=%s rotational=%s scheduler=%s",
+                     devnum, dev_path,
+                     result.get("size_bytes", "?"),
+                     result.get("rotational", "?"),
+                     result.get("scheduler", "?"))
+        return result
 
     def get_disks(self):
         """Collect stats for all non-ignored block devices.
@@ -189,7 +235,9 @@ class Disk:
                 + ":"
                 + str(devs[dev]["minor"])
             )
-            self.get_sys_stats(devnum)
+            sys_stats = self.get_sys_stats(devnum)
+            if sys_stats:
+                devs[dev].update(sys_stats)
         self.blockdevices = devs
         logger.debug("get_disks: collected stats for %d devices", len(devs))
 

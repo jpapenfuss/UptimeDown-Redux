@@ -1,10 +1,10 @@
 """Tests for monitoring/gather/linux_disk.py — Disk.get_devices() /proc/diskstats parsing,
-IGNORE_PREFIXES filtering, and partial-field handling for older kernels."""
+IGNORE_PREFIXES filtering, partial-field handling, get_queue(), and get_sys_stats()."""
 import io
 import os
 import sys
 import unittest
-from unittest.mock import patch, mock_open, MagicMock
+from unittest.mock import patch, mock_open, MagicMock, call
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from monitoring.gather import linux_disk
@@ -148,9 +148,28 @@ class TestGetDisks(unittest.TestCase):
         d = Disk.__new__(Disk)
         d.blockdevices = {}
         d.get_devices = MagicMock(return_value=fake_devices)
-        d.get_sys_stats = MagicMock(return_value=None)
+        d.get_sys_stats = MagicMock(return_value={})
         d.get_disks()
-        self.assertEqual(d.blockdevices, fake_devices)
+        self.assertIn("sda", d.blockdevices)
+
+    def test_sys_stats_merged_into_device(self):
+        fake_devices = {"sda": {"major": 8, "minor": 0}}
+        d = Disk.__new__(Disk)
+        d.blockdevices = {}
+        d.get_devices = MagicMock(return_value=fake_devices)
+        d.get_sys_stats = MagicMock(return_value={"size_bytes": 500107862016, "rotational": 1})
+        d.get_disks()
+        self.assertEqual(d.blockdevices["sda"]["size_bytes"], 500107862016)
+        self.assertEqual(d.blockdevices["sda"]["rotational"], 1)
+
+    def test_empty_sys_stats_not_merged(self):
+        fake_devices = {"sda": {"major": 8, "minor": 0}}
+        d = Disk.__new__(Disk)
+        d.blockdevices = {}
+        d.get_devices = MagicMock(return_value=fake_devices)
+        d.get_sys_stats = MagicMock(return_value={})
+        d.get_disks()
+        self.assertNotIn("size_bytes", d.blockdevices["sda"])
 
     def test_blockdevices_unchanged_when_get_devices_returns_none(self):
         d = Disk.__new__(Disk)
@@ -172,16 +191,118 @@ class TestGetDisks(unittest.TestCase):
         self.assertEqual(d.get_sys_stats.call_count, 2)
 
 
-class TestStubs(unittest.TestCase):
-    """Confirm stub methods return their documented sentinel values."""
+class TestGetQueue(unittest.TestCase):
+    """Tests for get_queue(): reads queue/* sysfs attributes."""
 
-    def test_get_sys_stats_returns_none(self):
+    def _run(self, files):
+        """Run get_queue() with a fake filesystem mapping attr name → file content."""
         d = Disk.__new__(Disk)
-        self.assertIsNone(d.get_sys_stats("8:0"))
 
-    def test_get_queue_returns_zero(self):
+        def fake_open(path, *args, **kwargs):
+            for attr, content in files.items():
+                if path.endswith(attr):
+                    return io.StringIO(content)
+            raise FileNotFoundError(path)
+
+        with patch("builtins.open", fake_open):
+            return d.get_queue("/sys/block/sda/queue")
+
+    def test_returns_dict(self):
+        self.assertIsInstance(self._run({}), dict)
+
+    def test_rotational_parsed(self):
+        result = self._run({"rotational": "1\n"})
+        self.assertEqual(result["rotational"], 1)
+
+    def test_ssd_rotational_zero(self):
+        result = self._run({"rotational": "0\n"})
+        self.assertEqual(result["rotational"], 0)
+
+    def test_physical_block_size_parsed(self):
+        result = self._run({"physical_block_size": "4096\n"})
+        self.assertEqual(result["physical_block_size"], 4096)
+
+    def test_logical_block_size_parsed(self):
+        result = self._run({"logical_block_size": "512\n"})
+        self.assertEqual(result["logical_block_size"], 512)
+
+    def test_discard_granularity_parsed(self):
+        result = self._run({"discard_granularity": "512\n"})
+        self.assertEqual(result["discard_granularity"], 512)
+
+    def test_scheduler_bracketed_value_extracted(self):
+        result = self._run({"scheduler": "none [mq-deadline] bfq\n"})
+        self.assertEqual(result["scheduler"], "mq-deadline")
+
+    def test_scheduler_none_active(self):
+        result = self._run({"scheduler": "[none]\n"})
+        self.assertEqual(result["scheduler"], "none")
+
+    def test_missing_files_omitted(self):
+        result = self._run({})
+        self.assertNotIn("rotational", result)
+        self.assertNotIn("scheduler", result)
+
+    def test_unbracketed_scheduler_omitted(self):
+        # If the file exists but has no bracketed entry, scheduler is not added.
+        result = self._run({"scheduler": "none\n"})
+        self.assertNotIn("scheduler", result)
+
+
+class TestGetSysStats(unittest.TestCase):
+    """Tests for get_sys_stats(): sysfs path resolution and field merging."""
+
+    def _make_disk(self):
         d = Disk.__new__(Disk)
-        self.assertEqual(d.get_queue("anything"), 0)
+        d.sys_dev_block_path = "/sys/dev/block/"
+        return d
+
+    def test_returns_dict(self):
+        d = self._make_disk()
+        with patch("os.path.realpath", return_value="/sys/block/sda"), \
+             patch("os.path.isdir", return_value=True), \
+             patch("builtins.open", side_effect=FileNotFoundError), \
+             patch.object(d, "get_queue", return_value={}):
+            result = d.get_sys_stats("8:0")
+        self.assertIsInstance(result, dict)
+
+    def test_size_bytes_calculated(self):
+        d = self._make_disk()
+        with patch("os.path.realpath", return_value="/sys/block/sda"), \
+             patch("os.path.isdir", return_value=True), \
+             patch("builtins.open", lambda p, *a, **kw: io.StringIO("976773168\n")), \
+             patch.object(d, "get_queue", return_value={}):
+            result = d.get_sys_stats("8:0")
+        self.assertEqual(result["size_bytes"], 976773168 * 512)
+
+    def test_queue_attrs_merged(self):
+        d = self._make_disk()
+        queue_data = {"rotational": 1, "scheduler": "mq-deadline"}
+        with patch("os.path.realpath", return_value="/sys/block/sda"), \
+             patch("os.path.isdir", return_value=True), \
+             patch("builtins.open", side_effect=FileNotFoundError), \
+             patch.object(d, "get_queue", return_value=queue_data):
+            result = d.get_sys_stats("8:0")
+        self.assertEqual(result["rotational"], 1)
+        self.assertEqual(result["scheduler"], "mq-deadline")
+
+    def test_partition_falls_back_to_parent_queue(self):
+        # Partitions have no queue/ dir; get_queue should be called with ../queue.
+        d = self._make_disk()
+        with patch("os.path.realpath", return_value="/sys/block/sda/sda1"), \
+             patch("os.path.isdir", return_value=False), \
+             patch("builtins.open", side_effect=FileNotFoundError) as mock_open_call, \
+             patch.object(d, "get_queue", return_value={}) as mock_gq:
+            d.get_sys_stats("8:1")
+        # get_queue should have been called with the parent queue path.
+        args = mock_gq.call_args[0][0]
+        self.assertIn("..", args)
+
+    def test_returns_empty_dict_when_realpath_fails(self):
+        d = self._make_disk()
+        with patch("os.path.realpath", side_effect=OSError("no such file")):
+            result = d.get_sys_stats("8:0")
+        self.assertEqual(result, {})
 
 
 class TestDiskInit(unittest.TestCase):
