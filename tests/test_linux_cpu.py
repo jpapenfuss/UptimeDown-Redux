@@ -159,11 +159,13 @@ class TestGetCpuProcStats(unittest.TestCase):
         result = self._make_stats()
         self.assertNotIn("_time", result)
 
-    def test_aggregate_cpu_row(self):
+    def test_aggregate_cpu_row_promoted_to_top_level(self):
+        # The aggregate "cpu" row is now promoted to top-level *_ticks keys
+        # and the "cpu" dict itself is removed to avoid redundancy.
         result = self._make_stats()
-        self.assertIn("cpu", result)
-        self.assertEqual(result["cpu"]["user"], 100)
-        self.assertEqual(result["cpu"]["system"], 50)
+        self.assertNotIn("cpu", result)
+        self.assertEqual(result["user_ticks"], 100)
+        self.assertEqual(result["sys_ticks"], 50)
 
     def test_per_core_rows(self):
         result = self._make_stats()
@@ -199,20 +201,17 @@ class TestGetCpuProcStats(unittest.TestCase):
         self.assertEqual(result["steal_ticks"], 2)
         self.assertEqual(result["guest_ticks"], 1)
 
-    def test_normalized_keys_match_aggregate_cpu_subdict(self):
-        # user_ticks must equal cpu["user"], sys_ticks must equal cpu["system"], etc.
-        # Catches any copy-paste error in the normalization mapping.
+    def test_per_core_and_aggregate_use_same_tick_field_names(self):
+        # All CPU tick fields use _ticks suffix for consistency.
+        # The per-core dicts (cpu0, cpu1, ...) and top-level aggregate keys
+        # all use the same naming convention.
         result = self._make_stats()
-        agg = result["cpu"]
-        self.assertEqual(result["user_ticks"],    agg["user"])
-        self.assertEqual(result["nice_ticks"],    agg["nice"])
-        self.assertEqual(result["sys_ticks"],     agg["system"])
-        self.assertEqual(result["idle_ticks"],    agg["idle"])
-        self.assertEqual(result["iowait_ticks"],  agg["iowait"])
-        self.assertEqual(result["irq_ticks"],     agg["irq"])
-        self.assertEqual(result["softirq_ticks"], agg["softirq"])
-        self.assertEqual(result["steal_ticks"],   agg["steal"])
-        self.assertEqual(result["guest_ticks"],   agg["guest"])
+        # Check that per-core dicts have _ticks fields
+        self.assertEqual(result["cpu0"]["user_ticks"], 25)
+        self.assertEqual(result["cpu0"]["sys_ticks"], 12)
+        # Check that aggregate is promoted to top-level with same names
+        self.assertEqual(result["user_ticks"], 100)
+        self.assertEqual(result["sys_ticks"], 50)
 
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
@@ -237,7 +236,8 @@ class TestGetCpuProcStats(unittest.TestCase):
         # Must return a valid dict (not crash, not return False)
         self.assertIsInstance(result, dict)
         self.assertNotIn("_time", result)
-        self.assertIn("cpu", result)
+        self.assertNotIn("cpu", result)  # "cpu" dict is removed after promotion
+        self.assertIn("user_ticks", result)  # But top-level promoted keys exist
 
 
 class TestGetCpuSoftIrqs(unittest.TestCase):

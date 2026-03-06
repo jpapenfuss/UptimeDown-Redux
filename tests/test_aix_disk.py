@@ -196,6 +196,22 @@ class TestGetDisks(unittest.TestCase):
         self.assertNotIn("size_mb", entry)
         self.assertNotIn("free_mb", entry)
 
+    def test_name_not_duplicated_in_entry(self):
+        lib = MagicMock()
+        call_count = [0]
+        def side(id_p, buf_p, size, count):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 1
+            if buf_p is not None:
+                buf_p[0].name = b"hdisk0\x00"
+            return 1
+        lib.perfstat_disk.side_effect = side
+        with patch("time.time", return_value=1.0):
+            result = get_disks(lib)
+        self.assertIn("hdisk0", result)
+        self.assertNotIn("name", result["hdisk0"])
+
     def test_enumeration_failure_returns_empty(self):
         lib = MagicMock()
         call_count = [0]
@@ -216,7 +232,7 @@ class TestAixDiskInit(unittest.TestCase):
     def test_init_populates_disk_total_and_blockdevices(self):
         fake_lib = MagicMock()
         fake_total = {"ndisks": 5, "size_bytes": 1024 * 1024 * 1000}
-        fake_disks = {"hdisk0": {"name": "hdisk0"}}
+        fake_disks = {"hdisk0": {"size_bytes": 1024}}
         with patch("aix_disk._load_lib", return_value=fake_lib), \
              patch("aix_disk.get_disk_total", return_value=fake_total), \
              patch("aix_disk.get_disks", return_value=fake_disks):

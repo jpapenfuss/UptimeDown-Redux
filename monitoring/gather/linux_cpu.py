@@ -149,9 +149,9 @@ class Cpu:
         """Parse /proc/stat and return a dict of per-core counters and system-wide stats.
 
         Each cpu/cpuN line becomes a sub-dict keyed by the CPU name, with fields
-        named by cpustats_labels (user, nice, system, idle, ...).  A "softirqs"
-        sub-dict is also populated by calling GetCpuSoftIrqs once the per-CPU
-        section of /proc/stat is exhausted (triggered by the "intr" line).
+        named by cpustats_labels (user_ticks, nice_ticks, sys_ticks, idle_ticks, ...).
+        A "softirqs" sub-dict is also populated by calling GetCpuSoftIrqs once the
+        per-CPU section of /proc/stat is exhausted (triggered by the "intr" line).
 
         Non-CPU lines (ctxt, btime, processes, procs_running, procs_blocked)
         are stored at the top level, coerced to int or float where known.
@@ -167,7 +167,8 @@ class Cpu:
         # /proc/stat CPU line columns, in order. Not all kernels populate all fields;
         # zip() stops at the shorter of the two so missing trailing fields are silently
         # omitted rather than causing an IndexError.
-        cpustats_labels = ["user", "nice", "system", "idle", "iowait", "irq", "softirq", "steal", "guest", "guest_nice"]
+        # Field names use _ticks suffix for consistency with AIX schema.
+        cpustats_labels = ["user_ticks", "nice_ticks", "sys_ticks", "idle_ticks", "iowait_ticks", "irq_ticks", "softirq_ticks", "steal_ticks", "guest_ticks", "guest_nice_ticks"]
         stat_path = "/proc/stat"
         if util.caniread(stat_path) is False:
             logger.error(f"Fatal: Can't open {stat_path} for reading.")
@@ -204,19 +205,21 @@ class Cpu:
 
         # Promote aggregate CPU row's tick counters to top-level schema column names
         # so Linux and AIX rows share the same keys in the cpu_stats table.
-        # The per-core sub-dicts (cpu0, cpu1, ...) keep their original names.
+        # The per-core sub-dicts (cpu0, cpu1, ...) already use the _ticks suffix.
         agg = cpustats_values.get("cpu", {})
-        cpustats_values["user_ticks"]     = agg.get("user")
-        cpustats_values["nice_ticks"]     = agg.get("nice")
-        cpustats_values["sys_ticks"]      = agg.get("system")
-        cpustats_values["idle_ticks"]     = agg.get("idle")
-        cpustats_values["iowait_ticks"]   = agg.get("iowait")
-        cpustats_values["irq_ticks"]      = agg.get("irq")
-        cpustats_values["softirq_ticks"]  = agg.get("softirq")
-        cpustats_values["steal_ticks"]    = agg.get("steal")
-        cpustats_values["guest_ticks"]    = agg.get("guest")
+        cpustats_values["user_ticks"]     = agg.get("user_ticks")
+        cpustats_values["nice_ticks"]     = agg.get("nice_ticks")
+        cpustats_values["sys_ticks"]      = agg.get("sys_ticks")
+        cpustats_values["idle_ticks"]     = agg.get("idle_ticks")
+        cpustats_values["iowait_ticks"]   = agg.get("iowait_ticks")
+        cpustats_values["irq_ticks"]      = agg.get("irq_ticks")
+        cpustats_values["softirq_ticks"]  = agg.get("softirq_ticks")
+        cpustats_values["steal_ticks"]    = agg.get("steal_ticks")
+        cpustats_values["guest_ticks"]    = agg.get("guest_ticks")
+        # Remove the now-redundant "cpu" aggregate dict since its fields are promoted.
+        cpustats_values.pop("cpu", None)
 
-        ncores = sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu")
+        ncores = sum(1 for k in cpustats_values if k.startswith("cpu"))
         logger.debug("GetCpuProcStats: parsed aggregate + %d per-core CPU rows", ncores)
         logger.debug("GetCpuProcStats: user=%s nice=%s sys=%s idle=%s iowait=%s steal=%s",
                      cpustats_values.get("user_ticks"),

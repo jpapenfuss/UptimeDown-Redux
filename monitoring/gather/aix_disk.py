@@ -47,7 +47,7 @@ class perfstat_disk_total_t(ctypes.Structure):
         size, free  — megabytes
         xfers       — total I/O operations since boot
         xrate       — read transfers since boot (__rxfers)
-        rblks/wblks — 512-byte blocks transferred
+        read_blocks/write_blocks — 512-byte blocks transferred
         rserv/wserv — cumulative service times in milliseconds
         wq_*        — write-queue depth and wait time statistics
     """
@@ -90,11 +90,11 @@ class perfstat_disk_t(ctypes.Structure):
     The name is preserved from the C struct for direct correspondence.
 
     Units:
-        size, free  — megabytes
+        size, free  — megabytes (converted to bytes in output)
         bsize       — bytes per block for this disk
         xfers       — total transfers (reads + writes)
         xrate       — read transfers (__rxfers)
-        rblks/wblks — 512-byte blocks
+        read_blocks/write_blocks — 512-byte blocks transferred
         rserv/wserv — cumulative service times in milliseconds
         wq_*        — write-queue statistics
         wpar_id     — workload partition ID (0 = global)
@@ -194,13 +194,15 @@ def get_disk_total(lib, _time=None):
 
     result = _struct_to_dict(buf, perfstat_disk_total_t)
     # Rename to schema column names and convert capacity to bytes.
-    result["ndisks"]      = result.pop("number")
-    result["size_bytes"]  = result.pop("size") * 1024 * 1024
-    result["free_bytes"]  = result.pop("free") * 1024 * 1024
+    result["ndisks"]        = result.pop("number")
+    result["size_bytes"]    = result.pop("size") * 1024 * 1024
+    result["free_bytes"]    = result.pop("free") * 1024 * 1024
+    result["read_blocks"]   = result.pop("rblks")
+    result["write_blocks"]  = result.pop("wblks")
     logger.debug("get_disk_total: ndisks=%d size_bytes=%d free_bytes=%d xfers=%d",
                  result["ndisks"], result["size_bytes"], result["free_bytes"], result["xfers"])
-    logger.debug("get_disk_total: rblks=%d wblks=%d xrate=%d",
-                 result["rblks"], result["wblks"], result["xrate"])
+    logger.debug("get_disk_total: read_blocks=%d write_blocks=%d xrate=%d",
+                 result["read_blocks"], result["write_blocks"], result["xrate"])
     return result
 
 
@@ -215,8 +217,8 @@ def get_disks(lib, _time=None):
     The array pointer must be cast to POINTER(perfstat_disk_t) because ctypes
     does not implicitly convert a pointer-to-array to a pointer-to-element.
 
-    The raw "size" and "free" fields are renamed to "size_mb" / "free_mb" to
-    make units explicit — perfstat_disk_t reports both in megabytes.
+    The raw fields are renamed to schema names: "size"/"free" → "size_bytes"/"free_bytes"
+    (converted to bytes), "rblks"/"wblks" → "read_blocks"/"write_blocks".
 
     Returns a dict keyed by disk name (e.g. "hdisk0"), or an empty dict on
     error.
@@ -259,9 +261,12 @@ def get_disks(lib, _time=None):
     for i in range(ret):
         d = _struct_to_dict(disk_buf[i], perfstat_disk_t)
         # Convert capacity from MB to bytes and use schema column names.
-        d["size_bytes"] = d.pop("size") * 1024 * 1024
-        d["free_bytes"] = d.pop("free") * 1024 * 1024
-        disks[d["name"]] = d
+        d["size_bytes"]     = d.pop("size") * 1024 * 1024
+        d["free_bytes"]     = d.pop("free") * 1024 * 1024
+        d["read_blocks"]    = d.pop("rblks")
+        d["write_blocks"]   = d.pop("wblks")
+        disk_name = d.pop("name")
+        disks[disk_name] = d
     logger.debug("get_disks: collected %d disks", len(disks))
     for dname, d in disks.items():
         logger.debug("get_disks:   %s size_bytes=%d free_bytes=%d xfers=%d xrate=%d vgname=%r",

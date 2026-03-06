@@ -7,7 +7,7 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "monitoring", "gather"))
 import aix_cpu
-from aix_cpu import get_cpu_total, AixCpu, perfstat_cpu_total_t
+from aix_cpu import get_cpu_total, get_cpus, AixCpu, perfstat_cpu_total_t, perfstat_cpu_t
 
 
 class TestStructSize(unittest.TestCase):
@@ -132,6 +132,57 @@ class TestGetCpuTotal(unittest.TestCase):
         self.assertEqual(result["idle_ticks"], 800)
         self.assertEqual(result["iowait_ticks"], 10)
         self.assertEqual(result["processor_hz"], 3000000000)
+
+
+class TestGetCpus(unittest.TestCase):
+    """Tests for get_cpus(): per-CPU enumeration and tick field renames."""
+
+    def _make_lib(self, ncpus=2):
+        lib = MagicMock()
+        def side(id_p, buf_p, size, count):
+            if count == 0:
+                return ncpus
+            for i in range(min(ncpus, count)):
+                entry = buf_p[i]
+                entry.name = f"cpu{i}".encode()
+                entry.user = 100 + i
+                entry.sys = 50 + i
+                entry.idle = 800 + i
+                entry.wait = 10 + i
+                entry.state = b'\x01'
+            return ncpus
+        lib.perfstat_cpu.side_effect = side
+        return lib
+
+    def test_per_cpu_tick_fields_renamed(self):
+        with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)):
+            result = get_cpus()
+        cpu = result["cpu0"]
+        for key in ("user_ticks", "sys_ticks", "idle_ticks", "iowait_ticks"):
+            self.assertIn(key, cpu, f"Missing renamed key: {key}")
+
+    def test_per_cpu_old_tick_keys_absent(self):
+        with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)):
+            result = get_cpus()
+        cpu = result["cpu0"]
+        for key in ("user", "sys", "idle", "wait"):
+            self.assertNotIn(key, cpu, f"Old key still present: {key}")
+
+    def test_per_cpu_tick_values_correct(self):
+        with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)):
+            result = get_cpus()
+        cpu = result["cpu0"]
+        self.assertEqual(cpu["user_ticks"], 100)
+        self.assertEqual(cpu["sys_ticks"], 50)
+        self.assertEqual(cpu["idle_ticks"], 800)
+        self.assertEqual(cpu["iowait_ticks"], 10)
+
+    def test_returns_false_on_failure(self):
+        lib = MagicMock()
+        lib.perfstat_cpu.return_value = 0
+        with patch("aix_cpu._load_libperfstat", return_value=lib):
+            result = get_cpus()
+        self.assertIs(result, False)
 
 
 class TestAixCpu(unittest.TestCase):

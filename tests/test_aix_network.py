@@ -89,8 +89,22 @@ class TestGetInterfaces(unittest.TestCase):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=1.0):
             result = get_interfaces()
-        for key in ("mtu", "bitrate", "if_iqdrops", "if_arpdrops", "description", "type"):
+        for key in ("mtu", "speed_mbps", "if_iqdrops", "if_arpdrops", "description", "type"):
             self.assertIn(key, result["en0"])
+
+    def test_bitrate_renamed_to_speed_mbps(self):
+        with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
+             patch("time.time", return_value=1.0):
+            result = get_interfaces()
+        self.assertNotIn("bitrate", result["en0"])
+        self.assertIn("speed_mbps", result["en0"])
+
+    def test_speed_mbps_converted_from_bps(self):
+        # bitrate in mock is 1000000000 bps → 1000 Mbps
+        with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
+             patch("time.time", return_value=1.0):
+            result = get_interfaces()
+        self.assertEqual(result["en0"]["speed_mbps"], 1000)
 
     def test_time_key_absent(self):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \

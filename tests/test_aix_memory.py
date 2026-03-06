@@ -56,7 +56,7 @@ class TestGetMemoryTotal(unittest.TestCase):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=1.0):
             result = get_memory_total()
-        for key in ("mem_total", "mem_free", "mem_cached", "swap_total", "swap_free"):
+        for key in ("mem_total", "mem_free", "cached", "swap_total", "swap_free"):
             self.assertIn(key, result)
 
     def test_aix_specific_keys_present(self):
@@ -90,7 +90,7 @@ class TestGetMemoryTotal(unittest.TestCase):
             result = get_memory_total()
         self.assertEqual(result["mem_total"],  100 * PAGE_SIZE)
         self.assertEqual(result["mem_free"],    40 * PAGE_SIZE)
-        self.assertEqual(result["mem_cached"],  10 * PAGE_SIZE)
+        self.assertEqual(result["cached"],      10 * PAGE_SIZE)
         self.assertEqual(result["swap_total"],  20 * PAGE_SIZE)
         self.assertEqual(result["swap_free"],   15 * PAGE_SIZE)
 
@@ -112,7 +112,7 @@ class TestGetMemoryTotal(unittest.TestCase):
 
 
 class TestAixMemory(unittest.TestCase):
-    """Tests for AixMemory class: stats dict shape, slabs=None invariant, and UpdateValues()."""
+    """Tests for AixMemory class: stats dict shape, slabs=False invariant, and UpdateValues()."""
 
     def test_init_creates_stats_with_memory_and_slabs(self):
         fake = {"mem_total": 1024 * PAGE_SIZE}
@@ -121,10 +121,10 @@ class TestAixMemory(unittest.TestCase):
         self.assertIn("memory", obj.stats)
         self.assertIn("slabs", obj.stats)
 
-    def test_slabs_always_none(self):
+    def test_slabs_always_false(self):
         with patch("aix_memory.get_memory_total", return_value={}):
             obj = AixMemory()
-        self.assertIsNone(obj.stats["slabs"])
+        self.assertIs(obj.stats["slabs"], False)
 
     def test_update_values_refreshes_memory(self):
         obj = AixMemory.__new__(AixMemory)
@@ -133,7 +133,7 @@ class TestAixMemory(unittest.TestCase):
         with patch("aix_memory.get_memory_total", return_value=new_data):
             obj.UpdateValues()
         self.assertEqual(obj.stats["memory"], new_data)
-        self.assertIsNone(obj.stats["slabs"])
+        self.assertIs(obj.stats["slabs"], False)
 
     def test_update_values_called_on_init(self):
         with patch.object(AixMemory, "UpdateValues") as mock_update:
