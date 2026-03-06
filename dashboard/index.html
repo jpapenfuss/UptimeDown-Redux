@@ -103,14 +103,6 @@
       grid-column: 1 / -1;
     }
 
-    .chart-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 12px;
-      gap: 12px;
-    }
-
     .chart-title {
       font-size: 12px;
       font-weight: 600;
@@ -119,52 +111,6 @@
       color: var(--muted);
       flex-shrink: 0;
       margin-bottom: 12px;
-    }
-
-    /* chart-title inside chart-header has no bottom margin (header handles spacing) */
-    .chart-header .chart-title {
-      margin-bottom: 0;
-    }
-
-    .iface-filter {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 11px;
-      color: var(--muted);
-      flex-wrap: wrap;
-      justify-content: flex-end;
-    }
-
-    .iface-filter-label {
-      white-space: nowrap;
-    }
-
-    .iface-toggles {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-
-    .iface-toggles label {
-      display: flex;
-      align-items: center;
-      font-size: 11px;
-      color: var(--muted);
-      cursor: pointer;
-      gap: 4px;
-      white-space: nowrap;
-    }
-
-    .iface-toggles input[type="checkbox"] {
-      width: 12px;
-      height: 12px;
-      cursor: pointer;
-      accent-color: var(--accent);
-    }
-
-    .iface-toggles label:hover {
-      color: var(--text);
     }
 
     .chart-wrap {
@@ -223,13 +169,7 @@
   </div>
 
   <div class="chart-box">
-    <div class="chart-header">
-      <div class="chart-title">Network Throughput (MB/s)</div>
-      <div class="iface-filter">
-        <span class="iface-filter-label">Interfaces:</span>
-        <div class="iface-toggles" id="netToggles"></div>
-      </div>
-    </div>
+    <div class="chart-title">Network Throughput (MB/s)</div>
     <div class="chart-wrap"><canvas id="netChart"></canvas></div>
   </div>
 
@@ -278,23 +218,6 @@ const charts = {};
 let cachedPoints = [];
 const loadedFiles = new Set();
 
-// ── Network interface filter state ───────────────────────────────────────────
-// Controls which interfaces are included in aggregated network metrics.
-// Separate from chart legend toggles (which are visual only).
-const netIfaceToggles = {};
-
-function loadNetToggles() {
-  const saved = localStorage.getItem('netIfaceToggles');
-  if (saved) {
-    try { Object.assign(netIfaceToggles, JSON.parse(saved)); } catch (e) {}
-  }
-}
-
-function saveNetToggles() {
-  localStorage.setItem('netIfaceToggles', JSON.stringify(netIfaceToggles));
-}
-
-loadNetToggles();
 
 // ── Dataset hidden-state persistence ─────────────────────────────────────────
 // Tracks which legend items have been clicked off, persisted to localStorage.
@@ -319,49 +242,6 @@ function saveHiddenState(chartId, chart) {
 
 loadHiddenState();
 
-// Generate network interface toggles based on loaded data
-function generateNetworkToggles(points) {
-  if (!points.length) return;
-  const interfaces = new Set();
-  points.forEach(p => {
-    const net = p.network || {};
-    Object.keys(net).forEach(iface => {
-      if (iface !== 'lo') interfaces.add(iface);
-    });
-  });
-
-  const container = document.getElementById('netToggles');
-  if (!container || interfaces.size === 0) return;
-
-  // Only regenerate if interfaces changed
-  const existing = Array.from(container.querySelectorAll('input')).map(i => i.name);
-  const needed = Array.from(interfaces).sort();
-
-  if (existing.length === needed.length && existing.every((e, i) => e === needed[i])) {
-    return; // No change needed
-  }
-
-  container.innerHTML = '';
-  needed.forEach(iface => {
-    // Default: first two interfaces on, rest off
-    if (!(iface in netIfaceToggles)) {
-      netIfaceToggles[iface] = needed.indexOf(iface) < 2;
-    }
-    const label = document.createElement('label');
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.name = iface;
-    input.checked = netIfaceToggles[iface];
-    input.addEventListener('change', () => {
-      netIfaceToggles[iface] = input.checked;
-      saveNetToggles();
-      renderAll(cachedPoints);
-    });
-    label.appendChild(input);
-    label.appendChild(document.createTextNode(' ' + iface));
-    container.appendChild(label);
-  });
-}
 
 // ── Chart.js defaults ────────────────────────────────────────────────────────
 Chart.defaults.color = '#64748b';
@@ -380,6 +260,11 @@ const C = {
   cyan:   '#06b6d4',
   muted:  '#64748b',
 };
+
+// Palette for assigning one color per device/interface. Read/RX = solid line,
+// Write/TX = dashed line with the same color.
+const SERIES_PALETTE = [C.blue, C.green, C.orange, C.purple, C.cyan, C.red, C.yellow, C.muted];
+function seriesColor(idx) { return SERIES_PALETTE[idx % SERIES_PALETTE.length]; }
 
 function rgba(hex, a) {
   const r = parseInt(hex.slice(1,3),16);
@@ -612,32 +497,39 @@ function renderMemory(points) {
 }
 
 // ── Disk I/O chart ───────────────────────────────────────────────────────────
-// Aggregates all block devices. Sectors are 512 bytes.
+// Per-device lines. Read = solid, write = dashed, same colour per device.
+// First 3 devices visible by default; extras start hidden.
 function renderDisk(points) {
-  const reads = [], writes = [];
+  const devices = new Set();
+  points.forEach(p => Object.keys(p.disks || {}).forEach(d => devices.add(d)));
+  const devList = Array.from(devices).sort();
+
+  const series = {};
+  devList.forEach(d => { series[d] = { read: [], write: [] }; });
+
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].disks || {};
     const curr = points[i].disks || {};
     const x = new Date(points[i].collected_at * 1000);
     const dt = points[i].collected_at - points[i - 1].collected_at;
     if (dt <= 0) continue;
-
-    let drs = 0, dws = 0;
-    for (const dev of Object.keys(curr)) {
-      const c = curr[dev], p = prev[dev] || {};
-      drs += (c.read_sectors  || 0) - (p.read_sectors  || 0);
-      dws += (c.write_sectors || 0) - (p.write_sectors || 0);
-    }
     const mbps = v => parseFloat((v * 512 / 1048576 / dt).toFixed(3));
-    reads.push(  { x, y: mbps(drs) });
-    writes.push( { x, y: mbps(dws) });
+    for (const dev of devList) {
+      const c = curr[dev] || {}, p = prev[dev] || {};
+      series[dev].read.push( { x, y: mbps((c.read_sectors  || 0) - (p.read_sectors  || 0)) });
+      series[dev].write.push({ x, y: mbps((c.write_sectors || 0) - (p.write_sectors || 0)) });
+    }
   }
-  makeChart('diskChart', 'line', {
-    datasets: [
-      lineDataset('Read MB/s',  C.cyan,   reads,  { fill: true }),
-      lineDataset('Write MB/s', C.purple, writes, { fill: true }),
-    ],
-  }, {
+
+  const datasets = [];
+  devList.forEach((dev, i) => {
+    const color  = seriesColor(i);
+    const hidden = i >= 3;
+    datasets.push(lineDataset(`${dev} read`,  color, series[dev].read,  { hidden }));
+    datasets.push(lineDataset(`${dev} write`, color, series[dev].write, { borderDash: [4, 4], hidden }));
+  });
+
+  makeChart('diskChart', 'line', { datasets }, {
     scales: {
       x: timeXAxis(),
       y: { ...yAxis('MB/s', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
@@ -650,33 +542,39 @@ function renderDisk(points) {
 }
 
 // ── Network chart ────────────────────────────────────────────────────────────
+// Per-interface lines. RX = solid, TX = dashed, same colour per interface.
+// First 2 interfaces visible by default; loopback always excluded.
 function renderNetwork(points) {
-  const rx = [], tx = [];
+  const ifaces = new Set();
+  points.forEach(p => Object.keys(p.network || {}).forEach(i => { if (i !== 'lo') ifaces.add(i); }));
+  const ifaceList = Array.from(ifaces).sort();
+
+  const series = {};
+  ifaceList.forEach(i => { series[i] = { rx: [], tx: [] }; });
+
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].network || {};
     const curr = points[i].network || {};
     const x = new Date(points[i].collected_at * 1000);
     const dt = points[i].collected_at - points[i - 1].collected_at;
     if (dt <= 0) continue;
-
-    let dib = 0, dob = 0;
-    for (const iface of Object.keys(curr)) {
-      if (iface === 'lo') continue;
-      if (!netIfaceToggles[iface]) continue;
-      const c = curr[iface], p = prev[iface] || {};
-      dib += (c.ibytes || 0) - (p.ibytes || 0);
-      dob += (c.obytes || 0) - (p.obytes || 0);
-    }
     const mbps = v => parseFloat((v / 1048576 / dt).toFixed(4));
-    rx.push( { x, y: mbps(dib) });
-    tx.push( { x, y: mbps(dob) });
+    for (const iface of ifaceList) {
+      const c = curr[iface] || {}, p = prev[iface] || {};
+      series[iface].rx.push({ x, y: mbps((c.ibytes || 0) - (p.ibytes || 0)) });
+      series[iface].tx.push({ x, y: mbps((c.obytes || 0) - (p.obytes || 0)) });
+    }
   }
-  makeChart('netChart', 'line', {
-    datasets: [
-      lineDataset('RX MB/s', C.green,  rx, { fill: true }),
-      lineDataset('TX MB/s', C.yellow, tx, { fill: true }),
-    ],
-  }, {
+
+  const datasets = [];
+  ifaceList.forEach((iface, i) => {
+    const color  = seriesColor(i);
+    const hidden = i >= 2;
+    datasets.push(lineDataset(`${iface} RX`, color, series[iface].rx, { fill: true, hidden }));
+    datasets.push(lineDataset(`${iface} TX`, color, series[iface].tx, { borderDash: [4, 4], hidden }));
+  });
+
+  makeChart('netChart', 'line', { datasets }, {
     scales: {
       x: timeXAxis(),
       y: { ...yAxis('MB/s', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
@@ -776,101 +674,123 @@ function renderFilesystems(points) {
 }
 
 // ── Disk IOPS chart ──────────────────────────────────────────────────────────
+// Per-device lines. Read = solid, write = dashed, same colour per device.
 function renderIOPS(points) {
-  const reads = [], writes = [];
+  const devices = new Set();
+  points.forEach(p => Object.keys(p.disks || {}).forEach(d => devices.add(d)));
+  const devList = Array.from(devices).sort();
+
+  const series = {};
+  devList.forEach(d => { series[d] = { read: [], write: [] }; });
+
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].disks || {};
     const curr = points[i].disks || {};
     const x = new Date(points[i].collected_at * 1000);
     const dt = points[i].collected_at - points[i - 1].collected_at;
     if (dt <= 0) continue;
-    let dri = 0, dwi = 0;
-    for (const dev of Object.keys(curr)) {
-      const c = curr[dev], p = prev[dev] || {};
-      dri += (c.read_ios  || 0) - (p.read_ios  || 0);
-      dwi += (c.write_ios || 0) - (p.write_ios || 0);
+    for (const dev of devList) {
+      const c = curr[dev] || {}, p = prev[dev] || {};
+      series[dev].read.push( { x, y: parseFloat(((c.read_ios  || 0) - (p.read_ios  || 0)) / dt).toFixed(2) });
+      series[dev].write.push({ x, y: parseFloat(((c.write_ios || 0) - (p.write_ios || 0)) / dt).toFixed(2) });
     }
-    reads.push(  { x, y: parseFloat((dri / dt).toFixed(2)) });
-    writes.push( { x, y: parseFloat((dwi / dt).toFixed(2)) });
   }
-  makeChart('iopsChart', 'line', {
-    datasets: [
-      lineDataset('Read ops/sec',  C.cyan,   reads,  { fill: true }),
-      lineDataset('Write ops/sec', C.purple, writes, { fill: true }),
-    ],
-  }, {
+
+  const datasets = [];
+  devList.forEach((dev, i) => {
+    const color  = seriesColor(i);
+    const hidden = i >= 3;
+    datasets.push(lineDataset(`${dev} read`,  color, series[dev].read,  { hidden }));
+    datasets.push(lineDataset(`${dev} write`, color, series[dev].write, { borderDash: [4, 4], hidden }));
+  });
+
+  makeChart('iopsChart', 'line', { datasets }, {
     scales: {
       x: timeXAxis(),
       y: { ...yAxis('ops/sec', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
     },
     plugins: {
-      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)} ops/s` } },
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} ops/s` } },
       legend: { labels: { boxWidth: 10, padding: 12 } },
     },
   });
 }
 
 // ── Network packets chart ────────────────────────────────────────────────────
+// Per-interface lines. RX = solid, TX = dashed, same colour per interface.
 function renderNetworkPackets(points) {
-  const rx = [], tx = [];
+  const ifaces = new Set();
+  points.forEach(p => Object.keys(p.network || {}).forEach(i => { if (i !== 'lo') ifaces.add(i); }));
+  const ifaceList = Array.from(ifaces).sort();
+
+  const series = {};
+  ifaceList.forEach(i => { series[i] = { rx: [], tx: [] }; });
+
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].network || {};
     const curr = points[i].network || {};
     const x = new Date(points[i].collected_at * 1000);
     const dt = points[i].collected_at - points[i - 1].collected_at;
     if (dt <= 0) continue;
-    let dip = 0, dop = 0;
-    for (const iface of Object.keys(curr)) {
-      if (iface === 'lo') continue;
-      if (!netIfaceToggles[iface]) continue;
-      const c = curr[iface], p = prev[iface] || {};
-      dip += (c.ipackets || 0) - (p.ipackets || 0);
-      dop += (c.opackets || 0) - (p.opackets || 0);
+    for (const iface of ifaceList) {
+      const c = curr[iface] || {}, p = prev[iface] || {};
+      series[iface].rx.push({ x, y: parseFloat(((c.ipackets || 0) - (p.ipackets || 0)) / dt).toFixed(0) });
+      series[iface].tx.push({ x, y: parseFloat(((c.opackets || 0) - (p.opackets || 0)) / dt).toFixed(0) });
     }
-    rx.push( { x, y: parseFloat((dip / dt).toFixed(0)) });
-    tx.push( { x, y: parseFloat((dop / dt).toFixed(0)) });
   }
-  makeChart('netPktsChart', 'line', {
-    datasets: [
-      lineDataset('RX pkts/sec', C.green,  rx, { fill: true }),
-      lineDataset('TX pkts/sec', C.yellow, tx, { fill: true }),
-    ],
-  }, {
+
+  const datasets = [];
+  ifaceList.forEach((iface, i) => {
+    const color  = seriesColor(i);
+    const hidden = i >= 2;
+    datasets.push(lineDataset(`${iface} RX`, color, series[iface].rx, { hidden }));
+    datasets.push(lineDataset(`${iface} TX`, color, series[iface].tx, { borderDash: [4, 4], hidden }));
+  });
+
+  makeChart('netPktsChart', 'line', { datasets }, {
     scales: {
       x: timeXAxis(),
       y: { ...yAxis('pkts/sec', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
     },
     plugins: {
-      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(0)} pkts/s` } },
+      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y} pkts/s` } },
       legend: { labels: { boxWidth: 10, padding: 12 } },
     },
   });
 }
 
 // ── Network errors & drops ───────────────────────────────────────────────────
+// Per-interface lines. Errors = solid, drops = dashed, same colour per interface.
 function renderNetworkErrors(points) {
-  const errors = [], drops = [];
+  const ifaces = new Set();
+  points.forEach(p => Object.keys(p.network || {}).forEach(i => { if (i !== 'lo') ifaces.add(i); }));
+  const ifaceList = Array.from(ifaces).sort();
+
+  const series = {};
+  ifaceList.forEach(i => { series[i] = { errors: [], drops: [] }; });
+
   for (let i = 1; i < points.length; i++) {
     const prev = points[i - 1].network || {};
     const curr = points[i].network || {};
     const x = new Date(points[i].collected_at * 1000);
-    let de = 0, dd = 0;
-    for (const iface of Object.keys(curr)) {
-      if (iface === 'lo') continue;
-      if (!netIfaceToggles[iface]) continue;
-      const c = curr[iface], p = prev[iface] || {};
-      de += ((c.ierrors || 0) + (c.oerrors || 0)) - ((p.ierrors || 0) + (p.oerrors || 0));
-      dd += ((c.idrop || 0) + (c.odrop || 0)) - ((p.idrop || 0) + (p.odrop || 0));
+    for (const iface of ifaceList) {
+      const c = curr[iface] || {}, p = prev[iface] || {};
+      const de = ((c.ierrors || 0) + (c.oerrors || 0)) - ((p.ierrors || 0) + (p.oerrors || 0));
+      const dd = ((c.idrop   || 0) + (c.odrop   || 0)) - ((p.idrop   || 0) + (p.odrop   || 0));
+      series[iface].errors.push({ x, y: Math.max(0, de) });
+      series[iface].drops.push( { x, y: Math.max(0, dd) });
     }
-    errors.push( { x, y: Math.max(0, de) });
-    drops.push(  { x, y: Math.max(0, dd) });
   }
-  makeChart('netErrorChart', 'line', {
-    datasets: [
-      lineDataset('Errors', C.red,    errors, { fill: true }),
-      lineDataset('Drops',  C.orange, drops,  { fill: true }),
-    ],
-  }, {
+
+  const datasets = [];
+  ifaceList.forEach((iface, i) => {
+    const color  = seriesColor(i);
+    const hidden = i >= 2;
+    datasets.push(lineDataset(`${iface} errors`, color, series[iface].errors, { hidden }));
+    datasets.push(lineDataset(`${iface} drops`,  color, series[iface].drops,  { borderDash: [4, 4], hidden }));
+  });
+
+  makeChart('netErrorChart', 'line', { datasets }, {
     scales: {
       x: timeXAxis(),
       y: { ...yAxis('count', 0), ticks: { maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
@@ -1044,7 +964,6 @@ function clearError() {
 // ── Render all charts from cached data ───────────────────────────────────────
 function renderAll(points) {
   if (!points.length) return;
-  generateNetworkToggles(points);
   renderCpu(points);
   renderMemory(points);
   renderDisk(points);

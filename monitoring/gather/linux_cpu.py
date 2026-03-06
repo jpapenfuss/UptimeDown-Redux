@@ -235,12 +235,38 @@ class Cpu:
                      cpustats_values.get("btime"))
         return cpustats_values
 
+    def GetLoadAvg(self, _time=None):
+        """Read /proc/loadavg and return load averages as a dict.
+
+        /proc/loadavg format: 1min 5min 15min runnable/total last_pid
+        Returns a dict with loadavg_1, loadavg_5, loadavg_15 as floats,
+        or False if /proc/loadavg is unreadable or malformed.
+        """
+        logger.debug("GetLoadAvg: reading /proc/loadavg")
+        loadavg_path = "/proc/loadavg"
+        if util.caniread(loadavg_path) is False:
+            logger.warning("Can't read %s", loadavg_path)
+            return False
+        with open(loadavg_path, "r") as f:
+            parts = f.readline().split()
+        if len(parts) < 3:
+            logger.warning("GetLoadAvg: unexpected format in /proc/loadavg")
+            return False
+        return {
+            "loadavg_1":  float(parts[0]),
+            "loadavg_5":  float(parts[1]),
+            "loadavg_15": float(parts[2]),
+        }
+
     def UpdateValues(self):
         """Refresh both cpuinfo_values and cpustat_values from /proc."""
         logger.debug("Cpu.UpdateValues: starting")
         ts = getattr(self, '_ts', None)
         self.cpuinfo_values = self.GetCpuinfo(ts)
         self.cpustat_values = self.GetCpuProcStats(ts)
+        loadavg = self.GetLoadAvg(ts)
+        if loadavg and self.cpustat_values is not False:
+            self.cpustat_values.update(loadavg)
         logger.debug("Cpu.UpdateValues: complete")
 
     def __init__(self, _time=None):
