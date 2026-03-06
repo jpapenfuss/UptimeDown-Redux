@@ -115,11 +115,18 @@ class TestGetDiskTotal(unittest.TestCase):
         self.assertIn("ndisks", result)
         self.assertIn("size_bytes", result)
         self.assertIn("free_bytes", result)
+        self.assertIn("read_ticks", result)
+        self.assertIn("write_ticks", result)
+        self.assertIn("read_ios", result)
+        self.assertIn("write_ios", result)
         self.assertNotIn("number", result)
         self.assertNotIn("size", result)
         self.assertNotIn("free", result)
         self.assertNotIn("size_mb", result)
         self.assertNotIn("free_mb", result)
+        self.assertNotIn("rserv", result)
+        self.assertNotIn("wserv", result)
+        self.assertNotIn("xrate", result)
 
     def test_size_converted_to_bytes(self):
         # size and free from perfstat are in MB; verify conversion to bytes (×1024×1024).
@@ -128,6 +135,20 @@ class TestGetDiskTotal(unittest.TestCase):
             result = get_disk_total(lib)
         self.assertEqual(result["size_bytes"], 1024 * 1024 * 1024)   # 1024 MB in bytes
         self.assertEqual(result["free_bytes"],  512 * 1024 * 1024)   # 512 MB in bytes
+
+    def test_write_ios_derived_from_xfers_minus_read_ios(self):
+        # xfers=100, xrate (read_ios)=60 → write_ios=40
+        lib = MagicMock()
+        def fill_buf(name_p, buf_p, size, count):
+            buf_p._obj.xfers = 100
+            buf_p._obj.xrate = 60
+            return 1
+        lib.perfstat_disk_total.side_effect = fill_buf
+        lib.perfstat_disk_total.return_value = 1
+        with patch("time.time", return_value=1.0):
+            result = get_disk_total(lib)
+        self.assertEqual(result["read_ios"], 60)
+        self.assertEqual(result["write_ios"], 40)
 
     def test_no_padding_in_result(self):
         lib = MagicMock()
@@ -191,10 +212,37 @@ class TestGetDisks(unittest.TestCase):
         entry = result["hdisk0"]
         self.assertIn("size_bytes", entry)
         self.assertIn("free_bytes", entry)
+        self.assertIn("read_ticks", entry)
+        self.assertIn("write_ticks", entry)
+        self.assertIn("read_ios", entry)
+        self.assertIn("write_ios", entry)
         self.assertNotIn("size", entry)
         self.assertNotIn("free", entry)
         self.assertNotIn("size_mb", entry)
         self.assertNotIn("free_mb", entry)
+        self.assertNotIn("rserv", entry)
+        self.assertNotIn("wserv", entry)
+        self.assertNotIn("xrate", entry)
+
+    def test_per_disk_write_ios_derived(self):
+        # xfers=200, xrate (read_ios)=150 → write_ios=50
+        lib = MagicMock()
+        call_count = [0]
+        def side(id_p, buf_p, size, count):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return 1
+            if buf_p is not None:
+                buf_p[0].name = b"hdisk0\x00"
+                buf_p[0].xfers = 200
+                buf_p[0].xrate = 150
+            return 1
+        lib.perfstat_disk.side_effect = side
+        with patch("time.time", return_value=1.0):
+            result = get_disks(lib)
+        entry = result["hdisk0"]
+        self.assertEqual(entry["read_ios"], 150)
+        self.assertEqual(entry["write_ios"], 50)
 
     def test_name_not_duplicated_in_entry(self):
         lib = MagicMock()

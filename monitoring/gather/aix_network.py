@@ -79,10 +79,11 @@ def get_interfaces(_time=None):
     does not implicitly convert a pointer-to-array to a pointer-to-element.
 
     Output keys are normalized to schema column names:
-        ipacets  → ipackets  (corrects the long-standing typo in libperfstat.h)
+        ipacets    → ipackets  (corrects the long-standing typo in libperfstat.h)
+        if_iqdrops → idrop     (input queue drops; matches Linux idrop)
 
     Counter fields (ibytes, obytes, ipackets, opackets, ierrors, oerrors,
-    collisions, if_iqdrops, if_arpdrops) are cumulative since boot. Rates
+    collisions, idrop, if_arpdrops) are cumulative since boot. Rates
     should be computed at query time by differencing adjacent rows.
 
     Returns a dict keyed by interface name (e.g. 'en0', 'lo0'), or an empty
@@ -145,16 +146,16 @@ def get_interfaces(_time=None):
             "oerrors":      buf.oerrors,
             "collisions":   buf.collisions,
             "speed_mbps":   buf.bitrate // 1_000_000,  # bps → Mbps; matches Linux speed_mbps
-            "if_iqdrops":   buf.if_iqdrops,
+            "idrop":        buf.if_iqdrops,             # input queue drops; matches Linux idrop
             "if_arpdrops":  buf.if_arpdrops,
         }
         interfaces[iface_name] = entry
     logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
     for iface, e in interfaces.items():
         logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "
-                     "speed_mbps=%d if_iqdrops=%d if_arpdrops=%d",
+                     "speed_mbps=%d idrop=%d if_arpdrops=%d",
                      iface, e["ibytes"], e["obytes"], e["ierrors"], e["oerrors"],
-                     e["speed_mbps"], e["if_iqdrops"], e["if_arpdrops"])
+                     e["speed_mbps"], e["idrop"], e["if_arpdrops"])
     return interfaces
 
 

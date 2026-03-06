@@ -97,6 +97,24 @@ class TestGetCpuTotal(unittest.TestCase):
         for key in ("idle_donated_purr", "busy_stolen_purr", "puser_spurr"):
             self.assertIn(key, result)
 
+    def test_pswitch_renamed_to_ctxt(self):
+        with patch("aix_cpu._load_libperfstat", return_value=self._make_lib(1)), \
+             patch("time.time", return_value=1.0):
+            result = get_cpu_total()
+        self.assertIn("ctxt", result)
+        self.assertNotIn("pswitch", result)
+
+    def test_ctxt_value_from_struct(self):
+        lib = MagicMock()
+        def fill(name_p, buf_p, size, count):
+            buf_p._obj.pswitch = 99999
+            return 1
+        lib.perfstat_cpu_total.side_effect = fill
+        with patch("aix_cpu._load_libperfstat", return_value=lib), \
+             patch("time.time", return_value=1.0):
+            result = get_cpu_total()
+        self.assertEqual(result["ctxt"], 99999)
+
     def test_loadavg_converted_to_float(self):
         """loadavg values must be divided by 65536 at collection time."""
         lib = MagicMock()
