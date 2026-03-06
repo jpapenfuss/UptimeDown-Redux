@@ -118,16 +118,35 @@
       text-transform: uppercase;
       color: var(--muted);
       flex-shrink: 0;
+      margin-bottom: 12px;
     }
 
-    .chart-toggles {
+    /* chart-title inside chart-header has no bottom margin (header handles spacing) */
+    .chart-header .chart-title {
+      margin-bottom: 0;
+    }
+
+    .iface-filter {
       display: flex;
-      gap: 10px;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
       flex-wrap: wrap;
       justify-content: flex-end;
     }
 
-    .chart-toggles label {
+    .iface-filter-label {
+      white-space: nowrap;
+    }
+
+    .iface-toggles {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .iface-toggles label {
       display: flex;
       align-items: center;
       font-size: 11px;
@@ -137,14 +156,14 @@
       white-space: nowrap;
     }
 
-    .chart-toggles input[type="checkbox"] {
+    .iface-toggles input[type="checkbox"] {
       width: 12px;
       height: 12px;
       cursor: pointer;
       accent-color: var(--accent);
     }
 
-    .chart-toggles label:hover {
+    .iface-toggles label:hover {
       color: var(--text);
     }
 
@@ -184,46 +203,13 @@
 
 <main>
   <div class="chart-box">
-    <div class="chart-header">
-      <div class="chart-title">CPU Usage (%)</div>
-      <div class="chart-toggles" id="cpuToggles">
-        <label><input type="checkbox" name="cpu-user" checked> User</label>
-        <label><input type="checkbox" name="cpu-nice"> Nice</label>
-        <label><input type="checkbox" name="cpu-system" checked> System</label>
-        <label><input type="checkbox" name="cpu-iowait" checked> I/O Wait</label>
-        <label><input type="checkbox" name="cpu-irq"> IRQ</label>
-        <label><input type="checkbox" name="cpu-softirq"> Soft IRQ</label>
-        <label><input type="checkbox" name="cpu-steal"> Steal</label>
-      </div>
-    </div>
+    <div class="chart-title">CPU Usage (%)</div>
     <div class="chart-wrap"><canvas id="cpuChart"></canvas></div>
   </div>
 
   <div class="chart-box">
-    <div class="chart-header">
-      <div class="chart-title">Memory (GB)</div>
-      <div class="chart-toggles" id="memToggles">
-        <label><input type="checkbox" name="mem-total" checked> Total</label>
-        <label><input type="checkbox" name="mem-used" checked> Used</label>
-        <label><input type="checkbox" name="mem-available" checked> Available</label>
-      </div>
-    </div>
+    <div class="chart-title">Memory (GB)</div>
     <div class="chart-wrap"><canvas id="memChart"></canvas></div>
-  </div>
-
-  <div class="chart-box">
-    <div class="chart-header">
-      <div class="chart-title">Memory Breakdown (GB)</div>
-      <div class="chart-toggles" id="memDetailToggles">
-        <label><input type="checkbox" name="mem-buffers" checked> Buffers</label>
-        <label><input type="checkbox" name="mem-cached" checked> Cached</label>
-        <label><input type="checkbox" name="mem-swap-used" checked> Swap Used</label>
-        <label><input type="checkbox" name="mem-total-mem"> Total Mem</label>
-        <label><input type="checkbox" name="mem-total-swap"> Total Swap</label>
-        <label><input type="checkbox" name="mem-swap-free"> Swap Free</label>
-      </div>
-    </div>
-    <div class="chart-wrap"><canvas id="memDetailChart"></canvas></div>
   </div>
 
   <div class="chart-box">
@@ -239,7 +225,10 @@
   <div class="chart-box">
     <div class="chart-header">
       <div class="chart-title">Network Throughput (MB/s)</div>
-      <div class="chart-toggles" id="netToggles"></div>
+      <div class="iface-filter">
+        <span class="iface-filter-label">Interfaces:</span>
+        <div class="iface-toggles" id="netToggles"></div>
+      </div>
     </div>
     <div class="chart-wrap"><canvas id="netChart"></canvas></div>
   </div>
@@ -289,49 +278,46 @@ const charts = {};
 let cachedPoints = [];
 const loadedFiles = new Set();
 
-// ── Chart toggles state ──────────────────────────────────────────────────────
-const chartToggles = {
-  // CPU chart toggles
-  'cpu-user': true,
-  'cpu-nice': false,
-  'cpu-system': true,
-  'cpu-iowait': true,
-  'cpu-irq': false,
-  'cpu-softirq': false,
-  'cpu-steal': false,
-  // Memory chart toggles
-  'mem-total': true,
-  'mem-used': true,
-  'mem-available': true,
-  // Memory detail chart toggles
-  'mem-buffers': true,
-  'mem-cached': true,
-  'mem-swap-used': true,
-  'mem-total-mem': false,
-  'mem-total-swap': false,
-  'mem-swap-free': false,
-  // Network toggles (dynamically added per interface)
-};
+// ── Network interface filter state ───────────────────────────────────────────
+// Controls which interfaces are included in aggregated network metrics.
+// Separate from chart legend toggles (which are visual only).
+const netIfaceToggles = {};
 
-// Load saved toggles from localStorage
-function loadToggles() {
-  const saved = localStorage.getItem('chartToggles');
+function loadNetToggles() {
+  const saved = localStorage.getItem('netIfaceToggles');
   if (saved) {
-    try {
-      Object.assign(chartToggles, JSON.parse(saved));
-    } catch (e) {
-      console.warn('Failed to load toggles from localStorage:', e);
-    }
+    try { Object.assign(netIfaceToggles, JSON.parse(saved)); } catch (e) {}
   }
 }
 
-// Save toggles to localStorage
-function saveToggles() {
-  localStorage.setItem('chartToggles', JSON.stringify(chartToggles));
+function saveNetToggles() {
+  localStorage.setItem('netIfaceToggles', JSON.stringify(netIfaceToggles));
 }
 
-// Initialize toggles on page load
-loadToggles();
+loadNetToggles();
+
+// ── Dataset hidden-state persistence ─────────────────────────────────────────
+// Tracks which legend items have been clicked off, persisted to localStorage.
+// Keys: chartId → { datasetLabel: true } (only hidden ones stored)
+const hiddenDatasets = {};
+
+function loadHiddenState() {
+  const saved = localStorage.getItem('hiddenDatasets');
+  if (saved) {
+    try { Object.assign(hiddenDatasets, JSON.parse(saved)); } catch (e) {}
+  }
+}
+
+function saveHiddenState(chartId, chart) {
+  const hidden = {};
+  chart.data.datasets.forEach((ds, i) => {
+    if (!chart.isDatasetVisible(i)) hidden[ds.label] = true;
+  });
+  hiddenDatasets[chartId] = hidden;
+  localStorage.setItem('hiddenDatasets', JSON.stringify(hiddenDatasets));
+}
+
+loadHiddenState();
 
 // Generate network interface toggles based on loaded data
 function generateNetworkToggles(points) {
@@ -351,49 +337,29 @@ function generateNetworkToggles(points) {
   const existing = Array.from(container.querySelectorAll('input')).map(i => i.name);
   const needed = Array.from(interfaces).sort();
 
-  if (existing.length === needed.length && existing.every((e, i) => e === `net-${needed[i]}`)) {
+  if (existing.length === needed.length && existing.every((e, i) => e === needed[i])) {
     return; // No change needed
   }
 
   container.innerHTML = '';
   needed.forEach(iface => {
-    const name = `net-${iface}`;
-    // Initialize toggle state with true for first two interfaces, false for others
-    if (!(name in chartToggles)) {
-      chartToggles[name] = needed.indexOf(iface) < 2;
+    // Default: first two interfaces on, rest off
+    if (!(iface in netIfaceToggles)) {
+      netIfaceToggles[iface] = needed.indexOf(iface) < 2;
     }
     const label = document.createElement('label');
     const input = document.createElement('input');
     input.type = 'checkbox';
-    input.name = name;
-    input.checked = chartToggles[name];
+    input.name = iface;
+    input.checked = netIfaceToggles[iface];
     input.addEventListener('change', () => {
-      chartToggles[name] = input.checked;
-      saveToggles();
+      netIfaceToggles[iface] = input.checked;
+      saveNetToggles();
       renderAll(cachedPoints);
     });
     label.appendChild(input);
     label.appendChild(document.createTextNode(' ' + iface));
     container.appendChild(label);
-  });
-}
-
-// Setup toggle event listeners
-function setupToggleListeners() {
-  ['cpuToggles', 'memToggles', 'memDetailToggles'].forEach(containerId => {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-    const inputs = container.querySelectorAll('input[type="checkbox"]');
-    inputs.forEach(input => {
-      // Set checked state from chartToggles
-      input.checked = chartToggles[input.name] || false;
-      // Add change listener
-      input.addEventListener('change', () => {
-        chartToggles[input.name] = input.checked;
-        saveToggles();
-        renderAll(cachedPoints);
-      });
-    });
   });
 }
 
@@ -456,10 +422,52 @@ function lineDataset(label, color, data, opts) {
   };
 }
 
+// Creates or replaces a chart. Preserves per-dataset hidden state across
+// re-renders: live chart state > localStorage > dataset default (hidden: true).
 function makeChart(id, type, data, options) {
   const ctx = document.getElementById(id).getContext('2d');
-  if (charts[id]) charts[id].destroy();
-  charts[id] = new Chart(ctx, { type, data, options: { responsive: true, maintainAspectRatio: false, animation: false, ...options } });
+
+  // Capture live hidden state before destroy (user may have toggled legend)
+  const liveHidden = {};
+  if (charts[id]) {
+    charts[id].data.datasets.forEach((ds, i) => {
+      liveHidden[ds.label] = !charts[id].isDatasetVisible(i);
+    });
+    charts[id].destroy();
+  }
+
+  // Apply hidden state: live > localStorage > dataset default
+  const savedHidden = hiddenDatasets[id] || {};
+  data.datasets.forEach(ds => {
+    if (ds.label in liveHidden) {
+      ds.hidden = liveHidden[ds.label];
+    } else if (savedHidden[ds.label]) {
+      ds.hidden = true;
+    }
+    // else: ds.hidden stays as set in the dataset definition (default)
+  });
+
+  // Inject legend click handler that persists hidden state
+  const legendClick = (e, legendItem, legend) => {
+    Chart.defaults.plugins.legend.onClick(e, legendItem, legend);
+    saveHiddenState(id, legend.chart);
+  };
+
+  const opts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    ...options,
+    plugins: {
+      ...options.plugins,
+      legend: {
+        ...options.plugins?.legend,
+        onClick: legendClick,
+      },
+    },
+  };
+
+  charts[id] = new Chart(ctx, { type, data, options: opts });
   return charts[id];
 }
 
@@ -534,17 +542,16 @@ function buildCpuSeries(points) {
 function renderCpu(points) {
   const series = buildCpuSeries(points);
 
-  const datasets = [];
-  if (chartToggles['cpu-user'])     datasets.push(lineDataset('User',      C.blue,   series.user,    { fill: true }));
-  if (chartToggles['cpu-nice'])     datasets.push(lineDataset('Nice',      C.cyan,   series.nice,    { fill: true }));
-  if (chartToggles['cpu-system'])   datasets.push(lineDataset('System',    C.orange, series.sys,     { fill: true }));
-  if (chartToggles['cpu-iowait'])   datasets.push(lineDataset('I/O Wait',  C.yellow, series.iowait,  { fill: true }));
-  if (chartToggles['cpu-irq'])      datasets.push(lineDataset('IRQ',       C.red,    series.irq,     { fill: true }));
-  if (chartToggles['cpu-softirq'])  datasets.push(lineDataset('Soft IRQ',  C.purple, series.softirq, { fill: true }));
-  if (chartToggles['cpu-steal'])    datasets.push(lineDataset('Steal',     C.green,  series.steal,   { fill: true }));
-
   makeChart('cpuChart', 'line', {
-    datasets,
+    datasets: [
+      lineDataset('User',     C.blue,   series.user,    { fill: true }),
+      lineDataset('System',   C.orange, series.sys,     { fill: true }),
+      lineDataset('I/O Wait', C.yellow, series.iowait,  { fill: true }),
+      lineDataset('Nice',     C.cyan,   series.nice,    { fill: true, hidden: true }),
+      lineDataset('IRQ',      C.red,    series.irq,     { fill: true, hidden: true }),
+      lineDataset('Soft IRQ', C.purple, series.softirq, { fill: true, hidden: true }),
+      lineDataset('Steal',    C.green,  series.steal,   { fill: true, hidden: true }),
+    ],
   }, {
     scales: {
       x: timeXAxis(),
@@ -560,28 +567,38 @@ function renderCpu(points) {
 }
 
 // ── Memory chart ─────────────────────────────────────────────────────────────
+// Combined view: high-level (used/available/total) + breakdown (buffers/cached/swap).
+// Click legend items to show/hide. Nice/IRQ/Steal/totals start hidden.
 function renderMemory(points) {
-  const used = [], avail = [], total = [];
+  const used = [], avail = [], total = [], buffers = [], cached = [], swap = [], totalSwap = [], swapFree = [];
   for (const p of points) {
     const mem = p.memory?.memory || p.memory || {};
     const x = new Date(p.collected_at * 1000);
     const tot = mem.mem_total || 0;
     const free = mem.mem_free || 0;
-    const av   = mem.mem_available ?? (free);
-    const usedBytes = tot - av;
+    const av   = mem.mem_available ?? free;
     const gb = v => parseFloat((v / 1073741824).toFixed(3));
-    total.push( { x, y: gb(tot) });
-    used.push(  { x, y: gb(usedBytes) });
-    avail.push( { x, y: gb(av) });
+    used.push(     { x, y: gb(tot - av) });
+    avail.push(    { x, y: gb(av) });
+    cached.push(   { x, y: gb(mem.cached || 0) });
+    swap.push(     { x, y: gb((mem.swap_total || 0) - (mem.swap_free || 0)) });
+    buffers.push(  { x, y: gb(mem.buffers || 0) });
+    total.push(    { x, y: gb(tot) });
+    totalSwap.push({ x, y: gb(mem.swap_total || 0) });
+    swapFree.push( { x, y: gb(mem.swap_free || 0) });
   }
 
-  const datasets = [];
-  if (chartToggles['mem-total'])     datasets.push(lineDataset('Total',     C.muted,  total, { borderDash: [4,4] }));
-  if (chartToggles['mem-used'])      datasets.push(lineDataset('Used',      C.red,    used,  { fill: true }));
-  if (chartToggles['mem-available']) datasets.push(lineDataset('Available', C.green,  avail  ));
-
   makeChart('memChart', 'line', {
-    datasets,
+    datasets: [
+      lineDataset('Used',       C.red,    used      ),
+      lineDataset('Available',  C.green,  avail     ),
+      lineDataset('Cached',     C.blue,   cached    ),
+      lineDataset('Swap Used',  C.orange, swap      ),
+      lineDataset('Buffers',    C.cyan,   buffers,   { hidden: true }),
+      lineDataset('Total',      C.muted,  total,     { borderDash: [4,4], hidden: true }),
+      lineDataset('Total Swap', C.purple, totalSwap, { borderDash: [4,4], hidden: true }),
+      lineDataset('Swap Free',  C.yellow, swapFree,  { hidden: true }),
+    ],
   }, {
     scales: {
       x: timeXAxis(),
@@ -644,9 +661,8 @@ function renderNetwork(points) {
 
     let dib = 0, dob = 0;
     for (const iface of Object.keys(curr)) {
-      // Skip loopback and unchecked interfaces
       if (iface === 'lo') continue;
-      if (!chartToggles[`net-${iface}`]) continue;
+      if (!netIfaceToggles[iface]) continue;
       const c = curr[iface], p = prev[iface] || {};
       dib += (c.ibytes || 0) - (p.ibytes || 0);
       dob += (c.obytes || 0) - (p.obytes || 0);
@@ -759,43 +775,6 @@ function renderFilesystems(points) {
   });
 }
 
-// ── Memory detail chart ──────────────────────────────────────────────────────
-function renderMemoryDetail(points) {
-  const buffers = [], cached = [], swap = [], totalMem = [], totalSwap = [], swapFree = [];
-  for (const p of points) {
-    const mem = p.memory?.memory || p.memory || {};
-    const x = new Date(p.collected_at * 1000);
-    const gb = v => v ? parseFloat((v / 1073741824).toFixed(3)) : 0;
-    buffers.push(   { x, y: gb(mem.buffers || 0) });
-    cached.push(    { x, y: gb(mem.cached || 0) });
-    swap.push(      { x, y: gb((mem.swap_total || 0) - (mem.swap_free || 0)) });
-    totalMem.push(  { x, y: gb(mem.mem_total || 0) });
-    totalSwap.push( { x, y: gb(mem.swap_total || 0) });
-    swapFree.push(  { x, y: gb(mem.swap_free || 0) });
-  }
-
-  const datasets = [];
-  if (chartToggles['mem-buffers'])     datasets.push(lineDataset('Buffers',      C.blue,   buffers,   { fill: true }));
-  if (chartToggles['mem-cached'])      datasets.push(lineDataset('Cached',       C.green,  cached,    { fill: true }));
-  if (chartToggles['mem-swap-used'])   datasets.push(lineDataset('Swap Used',    C.red,    swap,      { fill: true }));
-  if (chartToggles['mem-total-mem'])   datasets.push(lineDataset('Total Mem',    C.cyan,   totalMem,  { borderDash: [4,4] }));
-  if (chartToggles['mem-total-swap'])  datasets.push(lineDataset('Total Swap',   C.orange, totalSwap, { borderDash: [4,4] }));
-  if (chartToggles['mem-swap-free'])   datasets.push(lineDataset('Swap Free',    C.yellow, swapFree   ));
-
-  makeChart('memDetailChart', 'line', {
-    datasets,
-  }, {
-    scales: {
-      x: timeXAxis(),
-      y: { ...yAxis('GB', 0), ticks: { callback: v => v.toFixed(1) + ' GB', maxTicksLimit: 6 }, grid: { color: '#2a2d3a' } },
-    },
-    plugins: {
-      tooltip: { callbacks: { label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(2)} GB` } },
-      legend: { labels: { boxWidth: 10, padding: 12 } },
-    },
-  });
-}
-
 // ── Disk IOPS chart ──────────────────────────────────────────────────────────
 function renderIOPS(points) {
   const reads = [], writes = [];
@@ -843,7 +822,7 @@ function renderNetworkPackets(points) {
     let dip = 0, dop = 0;
     for (const iface of Object.keys(curr)) {
       if (iface === 'lo') continue;
-      if (!chartToggles[`net-${iface}`]) continue;
+      if (!netIfaceToggles[iface]) continue;
       const c = curr[iface], p = prev[iface] || {};
       dip += (c.ipackets || 0) - (p.ipackets || 0);
       dop += (c.opackets || 0) - (p.opackets || 0);
@@ -878,7 +857,7 @@ function renderNetworkErrors(points) {
     let de = 0, dd = 0;
     for (const iface of Object.keys(curr)) {
       if (iface === 'lo') continue;
-      if (!chartToggles[`net-${iface}`]) continue;
+      if (!netIfaceToggles[iface]) continue;
       const c = curr[iface], p = prev[iface] || {};
       de += ((c.ierrors || 0) + (c.oerrors || 0)) - ((p.ierrors || 0) + (p.oerrors || 0));
       dd += ((c.idrop || 0) + (c.odrop || 0)) - ((p.idrop || 0) + (p.odrop || 0));
@@ -909,7 +888,6 @@ function renderLoad(points) {
   for (const p of points) {
     const cpu = p.cpustats || {};
     const x = new Date(p.collected_at * 1000);
-    // Load averages: if not present, use 0
     load1.push(  { x, y: parseFloat((cpu.loadavg_1 || 0).toFixed(2)) });
     load5.push(  { x, y: parseFloat((cpu.loadavg_5 || 0).toFixed(2)) });
     load15.push( { x, y: parseFloat((cpu.loadavg_15 || 0).toFixed(2)) });
@@ -970,15 +948,15 @@ function renderContext(points) {
 function renderSoftirq(points) {
   const softirqs = {};
   const softirqColors = {
-    'TIMER':     C.blue,
-    'NET_TX':    C.green,
-    'NET_RX':    C.yellow,
-    'BLOCK':     C.cyan,
+    'TIMER':        C.blue,
+    'NET_TX':       C.green,
+    'NET_RX':       C.yellow,
+    'BLOCK':        C.cyan,
     'BLOCK_IOPOLL': C.purple,
-    'TASKLET':   C.red,
-    'SCHED':     C.orange,
-    'HRTIMER':   C.muted,
-    'RCU':       '#8b5cf6',
+    'TASKLET':      C.red,
+    'SCHED':        C.orange,
+    'HRTIMER':      C.muted,
+    'RCU':          '#8b5cf6',
   };
 
   for (let i = 1; i < points.length; i++) {
@@ -992,7 +970,6 @@ function renderSoftirq(points) {
     const prevSoftirqs = {};
     const currSoftirqs = {};
 
-    // Extract from per-CPU data (cpu0, cpu1, ...)
     for (const key in prev) {
       if (key.startsWith('cpu') && typeof prev[key] === 'object' && prev[key].softirqs) {
         for (const [irq, count] of Object.entries(prev[key].softirqs)) {
@@ -1008,16 +985,13 @@ function renderSoftirq(points) {
       }
     }
 
-    // Compute rates
     for (const irq of Object.keys(currSoftirqs)) {
       if (!(irq in softirqs)) softirqs[irq] = [];
       const delta = (currSoftirqs[irq] || 0) - (prevSoftirqs[irq] || 0);
-      const rate = parseFloat((delta / dt).toFixed(1));
-      softirqs[irq].push({ x, y: Math.max(0, rate) });
+      softirqs[irq].push({ x, y: Math.max(0, parseFloat((delta / dt).toFixed(1))) });
     }
   }
 
-  // Build datasets for top softirqs
   const datasets = [];
   const sortedIrqs = Object.entries(softirqs)
     .sort((a, b) => {
@@ -1025,12 +999,11 @@ function renderSoftirq(points) {
       const bAvg = b[1].reduce((s, p) => s + p.y, 0) / b[1].length;
       return bAvg - aAvg;
     })
-    .slice(0, 8)  // Top 8 softirqs
+    .slice(0, 8)
     .map(([irq]) => irq);
 
   sortedIrqs.forEach(irq => {
-    const color = softirqColors[irq] || C.muted;
-    datasets.push(lineDataset(irq, color, softirqs[irq], { fill: true }));
+    datasets.push(lineDataset(irq, softirqColors[irq] || C.muted, softirqs[irq], { fill: true }));
   });
 
   if (datasets.length === 0) {
@@ -1074,7 +1047,6 @@ function renderAll(points) {
   generateNetworkToggles(points);
   renderCpu(points);
   renderMemory(points);
-  renderMemoryDetail(points);
   renderDisk(points);
   renderIOPS(points);
   renderNetwork(points);
@@ -1118,9 +1090,6 @@ async function refresh() {
 if (CONFIG.refreshInterval > 0) {
   setInterval(refresh, CONFIG.refreshInterval * 1000);
 }
-
-// Wire up static toggle listeners once (dynamic net toggles handle themselves in generateNetworkToggles)
-setupToggleListeners();
 
 // Initial load
 refresh();
