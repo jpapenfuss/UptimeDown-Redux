@@ -32,7 +32,7 @@ def caniread(path):
 
 
 _IEC = {p + 'ib': 1024 ** e for e, p in enumerate('kmgtpe', 1)}
-_SI  = {p + 'b':  1000 ** e for e, p in enumerate('kmgtpe', 1)}
+_SI = {p + 'b': 1000 ** e for e, p in enumerate('kmgtpe', 1)}
 _MULTIPLIERS = {'b': 1, **_SI, **_IEC}
 
 

@@ -126,32 +126,32 @@ def get_memory_total(_time=None):
     p = PAGE_SIZE
     result = {
         # --- Normalized keys (shared with Linux) ---
-        "mem_total":    buf.real_total   * p,
-        "mem_free":     buf.real_free    * p,
-        "cached":       buf.numperm      * p,   # file cache; matches Linux 'Cached' → 'cached'
-        "swap_total":   buf.pgsp_total   * p,
-        "swap_free":    buf.pgsp_free    * p,
+        "mem_total": buf.real_total * p,
+        "mem_free": buf.real_free * p,
+        "cached": buf.numperm * p,  # file cache; matches Linux 'Cached' → 'cached'
+        "swap_total": buf.pgsp_total * p,
+        "swap_free": buf.pgsp_free * p,
 
         # --- AIX-only page-valued fields (stored as bytes) ---
-        "virt_total":   buf.virt_total   * p,
-        "virt_active":  buf.virt_active  * p,
-        "real_pinned":  buf.real_pinned  * p,
-        "real_inuse":   buf.real_inuse   * p,
-        "real_system":  buf.real_system  * p,
-        "real_user":    buf.real_user    * p,
+        "virt_total": buf.virt_total * p,
+        "virt_active": buf.virt_active * p,
+        "real_pinned": buf.real_pinned * p,
+        "real_inuse": buf.real_inuse * p,
+        "real_system": buf.real_system * p,
+        "real_user": buf.real_user * p,
         "real_process": buf.real_process * p,
-        "pgsp_rsvd":    buf.pgsp_rsvd    * p,
+        "pgsp_rsvd": buf.pgsp_rsvd * p,
 
         # --- AIX-only counters (cumulative since boot) ---
-        "pgbad":        buf.pgbad,
-        "pgexct":       buf.pgexct,
-        "pgins":        buf.pgins,
-        "pgouts":       buf.pgouts,
-        "pgspins":      buf.pgspins,
-        "pgspouts":     buf.pgspouts,
-        "scans":        buf.scans,
-        "cycles":       buf.cycles,
-        "pgsteals":     buf.pgsteals,
+        "pgbad": buf.pgbad,
+        "pgexct": buf.pgexct,
+        "pgins": buf.pgins,
+        "pgouts": buf.pgouts,
+        "pgspins": buf.pgspins,
+        "pgspouts": buf.pgspouts,
+        "scans": buf.scans,
+        "cycles": buf.cycles,
+        "pgsteals": buf.pgsteals,
     }
 
     gb = 1024 ** 3
@@ -177,22 +177,22 @@ class AixMemory:
         stats["slabs"]  — always False (no AIX equivalent of /proc/slabinfo).
     """
 
-    def UpdateValues(self):
+    def update_values(self):
         """Refresh stats by calling perfstat_memory_total() again."""
-        logger.debug("AixMemory.UpdateValues: starting")
+        logger.debug("AixMemory.update_values: starting")
         ts = getattr(self, '_ts', None)
         self.stats = {
             "memory": get_memory_total(ts),
             "slabs":  False,
         }
-        logger.debug("AixMemory.UpdateValues: complete (ok=%s)",
+        logger.debug("AixMemory.update_values: complete (ok=%s)",
                      self.stats["memory"] is not False)
 
     def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect memory stats."""
         self._ts = _time if _time is not None else time.time()
         logger.debug("AixMemory: initializing")
-        self.UpdateValues()
+        self.update_values()
 
 
 if __name__ == "__main__":

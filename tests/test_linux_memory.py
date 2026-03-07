@@ -1,4 +1,4 @@
-"""Tests for monitoring/gather/linux_memory.py — Memory.GetMeminfo() and GetSlabinfo()."""
+"""Tests for monitoring/gather/linux_memory.py — Memory.get_meminfo() and get_slabinfo()."""
 import io
 import os
 import sys
@@ -39,15 +39,15 @@ kmalloc-256        1234   2048    256   16   1 : tunables   0   0   0 : slabdata
 """
 
 
-class TestGetMeminfo(unittest.TestCase):
-    """Tests for GetMeminfo(): /proc/meminfo parsing, unit conversion, and key normalisation."""
+class Testget_meminfo(unittest.TestCase):
+    """Tests for get_meminfo(): /proc/meminfo parsing, unit conversion, and key normalisation."""
 
     def _run(self, content=MEMINFO_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
              patch("builtins.open", lambda *a, **kw: io.StringIO(content)), \
              patch("time.time", return_value=3000.0):
             mem = linux_memory.Memory.__new__(linux_memory.Memory)
-            return mem.GetMeminfo()
+            return mem.get_meminfo()
 
     def test_returns_dict(self):
         self.assertIsInstance(self._run(), dict)
@@ -98,18 +98,18 @@ class TestGetMeminfo(unittest.TestCase):
         with patch("monitoring.gather.util.caniread", return_value=False):
             mem = linux_memory.Memory.__new__(linux_memory.Memory)
             with self.assertRaises(RuntimeError):
-                mem.GetMeminfo()
+                mem.get_meminfo()
 
 
-class TestGetSlabinfo(unittest.TestCase):
-    """Tests for GetSlabinfo(): /proc/slabinfo v2.1 parsing, header skipping, and field mapping."""
+class Testget_slabinfo(unittest.TestCase):
+    """Tests for get_slabinfo(): /proc/slabinfo v2.1 parsing, header skipping, and field mapping."""
 
     def _run(self, content=SLABINFO_SAMPLE):
         with patch("monitoring.gather.util.caniread", return_value=True), \
              patch("builtins.open", lambda *a, **kw: io.StringIO(content)), \
              patch("time.time", return_value=3500.0):
             mem = linux_memory.Memory.__new__(linux_memory.Memory)
-            return mem.GetSlabinfo()
+            return mem.get_slabinfo()
 
     def test_returns_dict(self):
         self.assertIsInstance(self._run(), dict)
@@ -153,7 +153,7 @@ class TestGetSlabinfo(unittest.TestCase):
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             mem = linux_memory.Memory.__new__(linux_memory.Memory)
-            result = mem.GetSlabinfo()
+            result = mem.get_slabinfo()
         self.assertIs(result, False)
 
 
@@ -164,8 +164,8 @@ class TestMemoryInit(unittest.TestCase):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)
         fake_memory = {"mem_total": 1024}
         fake_slabs = {"kmalloc-64": {"active_objs": 10}}
-        mem.GetMeminfo = MagicMock(return_value=fake_memory)
-        mem.GetSlabinfo = MagicMock(return_value=fake_slabs)
+        mem.get_meminfo = MagicMock(return_value=fake_memory)
+        mem.get_slabinfo = MagicMock(return_value=fake_slabs)
         mem.__init__()
         self.assertIn("memory", mem.stats)
         self.assertIn("slabs", mem.stats)
@@ -174,8 +174,8 @@ class TestMemoryInit(unittest.TestCase):
 
     def test_slabs_false_when_unreadable(self):
         mem = linux_memory.Memory.__new__(linux_memory.Memory)
-        mem.GetMeminfo = MagicMock(return_value={})
-        mem.GetSlabinfo = MagicMock(return_value=False)
+        mem.get_meminfo = MagicMock(return_value={})
+        mem.get_slabinfo = MagicMock(return_value=False)
         mem.__init__()
         self.assertIs(mem.stats["slabs"], False)
 

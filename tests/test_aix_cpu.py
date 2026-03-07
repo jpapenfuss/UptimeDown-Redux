@@ -204,7 +204,7 @@ class TestGetCpus(unittest.TestCase):
 
 
 class TestAixCpu(unittest.TestCase):
-    """Tests for AixCpu class construction and UpdateValues() refresh behaviour."""
+    """Tests for AixCpu class construction and update_values() refresh behaviour."""
 
     def test_init_populates_cpustat_values(self):
         fake = {"user_ticks": 100}
@@ -219,11 +219,11 @@ class TestAixCpu(unittest.TestCase):
         new_data = {"user_ticks": 999}
         with patch("aix_cpu.get_cpu_total", return_value=new_data), \
              patch("aix_cpu.get_cpus", return_value={}):
-            obj.UpdateValues()
+            obj.update_values()
         self.assertEqual(obj.cpustat_values["user_ticks"], 999)
 
     def test_update_values_called_on_init(self):
-        with patch.object(AixCpu, "UpdateValues") as mock_update:
+        with patch.object(AixCpu, "update_values") as mock_update:
             obj = AixCpu.__new__(AixCpu)
             obj.__init__()
         mock_update.assert_called_once()

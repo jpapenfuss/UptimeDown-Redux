@@ -99,19 +99,19 @@ def get_interfaces(_time=None):
         for buf in iface_structs:
             iface_name = buf.name.decode("ascii", errors="replace").rstrip("\x00")
             entry = {
-                "description":  buf.description.decode("ascii", errors="replace").rstrip("\x00"),
-                "type":         buf.type,
-                "mtu":          buf.mtu,
-                "ipackets":     buf.ipacets,    # correct the libperfstat.h typo at output time
-                "ibytes":       buf.ibytes,
-                "ierrors":      buf.ierrors,
-                "opackets":     buf.opackets,
-                "obytes":       buf.obytes,
-                "oerrors":      buf.oerrors,
-                "collisions":   buf.collisions,
-                "speed_mbps":   buf.bitrate // 1_000_000,  # bps → Mbps; matches Linux speed_mbps
-                "idrop":        buf.if_iqdrops,             # input queue drops; matches Linux idrop
-                "if_arpdrops":  buf.if_arpdrops,
+                "description": buf.description.decode("ascii", errors="replace").rstrip("\x00"),
+                "type": buf.type,
+                "mtu": buf.mtu,
+                "ipackets": buf.ipacets,  # correct the libperfstat.h typo at output time
+                "ibytes": buf.ibytes,
+                "ierrors": buf.ierrors,
+                "opackets": buf.opackets,
+                "obytes": buf.obytes,
+                "oerrors": buf.oerrors,
+                "collisions": buf.collisions,
+                "speed_mbps": buf.bitrate // 1_000_000,  # bps → Mbps
+                "idrop": buf.if_iqdrops,  # input queue drops; matches Linux idrop
+                "if_arpdrops": buf.if_arpdrops,
             }
             interfaces[iface_name] = entry
     except (AttributeError, TypeError, ValueError, ZeroDivisionError) as e:
@@ -135,18 +135,18 @@ class AixNetwork:
                      perfstat_netinterface_t.
     """
 
-    def UpdateValues(self):
+    def update_values(self):
         """Refresh interfaces by calling perfstat_netinterface() again."""
-        logger.debug("AixNetwork.UpdateValues: starting")
+        logger.debug("AixNetwork.update_values: starting")
         ts = getattr(self, '_ts', None)
         self.interfaces = get_interfaces(ts)
-        logger.debug("AixNetwork.UpdateValues: complete (%d interfaces)", len(self.interfaces))
+        logger.debug("AixNetwork.update_values: complete (%d interfaces)", len(self.interfaces))
 
     def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect interface stats."""
         self._ts = _time if _time is not None else time.time()
         logger.debug("AixNetwork: initializing")
-        self.UpdateValues()
+        self.update_values()
 
 
 if __name__ == "__main__":

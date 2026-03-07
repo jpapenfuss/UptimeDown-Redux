@@ -112,7 +112,7 @@ class TestGetMemoryTotal(unittest.TestCase):
 
 
 class TestAixMemory(unittest.TestCase):
-    """Tests for AixMemory class: stats dict shape, slabs=False invariant, and UpdateValues()."""
+    """Tests for AixMemory class: stats dict shape, slabs=False invariant, and update_values()."""
 
     def test_init_creates_stats_with_memory_and_slabs(self):
         fake = {"mem_total": 1024 * PAGE_SIZE}
@@ -131,12 +131,12 @@ class TestAixMemory(unittest.TestCase):
         obj.stats = {}
         new_data = {"mem_total": 999 * PAGE_SIZE}
         with patch("aix_memory.get_memory_total", return_value=new_data):
-            obj.UpdateValues()
+            obj.update_values()
         self.assertEqual(obj.stats["memory"], new_data)
         self.assertIs(obj.stats["slabs"], False)
 
     def test_update_values_called_on_init(self):
-        with patch.object(AixMemory, "UpdateValues") as mock_update:
+        with patch.object(AixMemory, "update_values") as mock_update:
             obj = AixMemory.__new__(AixMemory)
             obj.__init__()
         mock_update.assert_called_once()

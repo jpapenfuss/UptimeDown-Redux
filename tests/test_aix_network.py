@@ -155,7 +155,7 @@ class TestGetInterfaces(unittest.TestCase):
 
 
 class TestAixNetwork(unittest.TestCase):
-    """Tests for AixNetwork class: init wiring, UpdateValues() refresh, and get_interfaces() delegation."""
+    """Tests for AixNetwork class: init wiring, update_values() refresh, and get_interfaces() delegation."""
 
     def test_init_populates_interfaces(self):
         fake = {"en0": {"ibytes": 100}}
@@ -167,14 +167,14 @@ class TestAixNetwork(unittest.TestCase):
         obj = AixNetwork.__new__(AixNetwork)
         new_data = {"en0": {"ibytes": 999}}
         with patch("aix_network.get_interfaces", return_value=new_data):
-            obj.UpdateValues()
+            obj.update_values()
         self.assertEqual(obj.interfaces, new_data)
 
     def test_update_values_called_on_init(self):
         with patch("aix_network.get_interfaces", return_value={}) as mock_get:
             obj = AixNetwork()
-        # UpdateValues is the only code path that calls get_interfaces;
-        # if it was called, UpdateValues was called from __init__.
+        # update_values is the only code path that calls get_interfaces;
+        # if it was called, update_values was called from __init__.
         mock_get.assert_called_once()
 
 

@@ -24,11 +24,9 @@ class Memory:
                           keys normalised to snake_case (e.g. mem_total). Always present.
         stats["slabs"]  — per-slab kernel allocator stats from /proc/slabinfo,
                           or False if the file is unreadable (requires root).
-
-    
     """
 
-    def GetMeminfo(self, _time=None):
+    def get_meminfo(self, _time=None):
         """Parse /proc/meminfo and return a dict of memory statistics.
 
         All values with a unit multiplier (kB) are converted to bytes via
@@ -43,7 +41,7 @@ class Memory:
         Raises RuntimeError if /proc/meminfo is unreadable — it must always
         exist on Linux; absence indicates a serious kernel or mount problem.
         """
-        logger.debug("GetMeminfo: reading /proc/meminfo")
+        logger.debug("get_meminfo: reading /proc/meminfo")
         meminfo_path = "/proc/meminfo"
         meminfo_values = {}
 
@@ -68,24 +66,24 @@ class Memory:
                             line[1] = util.tobytes(line[1], unit)
                         meminfo_values[key] = line[1]
                     except (ValueError, IndexError, TypeError) as e:
-                        logger.warning("GetMeminfo: error parsing line %r: %s", meminfo_line, e)
+                        logger.warning("get_meminfo: error parsing line %r: %s", meminfo_line, e)
                     meminfo_line = reader.readline().strip()
         except (IOError, OSError) as e:
             raise RuntimeError(f"Error reading {meminfo_path}: {e}")
         nfields = len(meminfo_values)
-        logger.debug("GetMeminfo: parsed %d fields", nfields)
-        logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
+        logger.debug("get_meminfo: parsed %d fields", nfields)
+        logger.debug("get_meminfo: mem_total=%d mem_free=%d mem_available=%d",
                      meminfo_values.get("mem_total", 0),
                      meminfo_values.get("mem_free", 0),
                      meminfo_values.get("mem_available", 0))
-        logger.debug("GetMeminfo: swap_total=%d swap_free=%d cached=%d buffers=%d",
+        logger.debug("get_meminfo: swap_total=%d swap_free=%d cached=%d buffers=%d",
                      meminfo_values.get("swap_total", 0),
                      meminfo_values.get("swap_free", 0),
                      meminfo_values.get("cached", 0),
                      meminfo_values.get("buffers", 0))
         return meminfo_values
 
-    def GetSlabinfo(self, _time=None):
+    def get_slabinfo(self, _time=None):
         """Parse /proc/slabinfo and return a dict of kernel slab allocator stats.
 
         /proc/slabinfo requires root. Returns False (not an error) if unreadable
@@ -104,7 +102,7 @@ class Memory:
             active_objs, num_objs, objsize, objperslab, pagesperslab,
             limit, batchcount, sharedfactor, active_slabs, num_slabs, sharedavail
         """
-        logger.debug("GetSlabinfo: reading /proc/slabinfo")
+        logger.debug("get_slabinfo: reading /proc/slabinfo")
         slabs = {}
         if not util.caniread("/proc/slabinfo"):
             logger.warning("linux_memory: can't read /proc/slabinfo (requires root) — skipping slab stats")
@@ -145,13 +143,13 @@ class Memory:
                             )
                         )
                     except (ValueError, IndexError, TypeError) as e:
-                        logger.warning("GetSlabinfo: error parsing slab entry: %s", e)
+                        logger.warning("get_slabinfo: error parsing slab entry: %s", e)
                     slabline = reader.readline()
         except (IOError, OSError) as e:
             logger.error("linux_memory: error reading /proc/slabinfo: %s", e)
             return False
         nslabs = len(slabs)
-        logger.debug("GetSlabinfo: parsed %d slab entries", nslabs)
+        logger.debug("get_slabinfo: parsed %d slab entries", nslabs)
         # Log only the top 5 slabs by active_objs — there can be hundreds of
         # slab types and logging all of them would flood the debug log.
         top = sorted(
@@ -159,7 +157,7 @@ class Memory:
             key=lambda x: x[1], reverse=True
         )[:5]
         for name, active in top:
-            logger.debug("GetSlabinfo:   %s active_objs=%d", name, active)
+            logger.debug("get_slabinfo:   %s active_objs=%d", name, active)
         return slabs
 
     def __init__(self, _time=None):
@@ -167,8 +165,8 @@ class Memory:
         logger.debug("Memory: initializing")
         ts = _time if _time is not None else time.time()
         self.stats = {}
-        self.stats["memory"] = self.GetMeminfo(ts)
-        self.stats["slabs"] = self.GetSlabinfo(ts)
+        self.stats["memory"] = self.get_meminfo(ts)
+        self.stats["slabs"] = self.get_slabinfo(ts)
         logger.debug("Memory: initialized (slabs=%s)",
                      "collected" if self.stats["slabs"] is not False else "unavailable")
 

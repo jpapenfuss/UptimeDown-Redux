@@ -14,8 +14,8 @@
 # Daemon mode: Set run_interval and optionally max_iterations in config.ini [daemon] section.
 import sys
 sys.dont_write_bytecode = True
+import json
 import time
-import uuid
 import os
 
 # Support both `python3 monitoring` (script-style) and `python3 -m monitoring`
@@ -119,7 +119,7 @@ def _build_gatherers():
     }
 
 
-def _assemble_json(cache, collected_at, json_module, errors=None):
+def _assemble_json(cache, collected_at, json_module, errors=None, names=None):
     """Merge gatherer cache into a single JSON string.
 
     Args:
@@ -127,26 +127,28 @@ def _assemble_json(cache, collected_at, json_module, errors=None):
         collected_at: float timestamp (seconds since epoch)
         json_module: json module
         errors: dict of gatherer name -> {error, message}; defaults to empty dict
+        names: iterable of gatherer names to include; if None, include all
 
     Failed gatherers have cache[name] = None and are skipped during merge.
+    Only gatherers in *names* are included in output (if provided).
     """
     output = {"system_id": _SYSTEM_ID, "collected_at": collected_at, "collection_errors": errors or {}}
-    for data in cache.values():
-        if data is not None:
+    for name, data in cache.items():
+        if data is not None and (names is None or name in names):
             output.update(data)
     return json_module.dumps(output, indent=4)
 
 
-def dump_json_file(json_string, logger, data_dir):
-    """Dump JSON output to a file with uuid-timestamp naming.
+def dump_json_file(json_string, logger, data_dir, system_id):
+    """Dump JSON output to a file with system-id-timestamp naming.
 
-    Filename format: <uuid>-<timestamp>.json
+    Filename format: <system_id>-<timestamp>.json
     Writes to the specified data_dir, creating it if needed.
     Silently fails if not writable.
     """
     try:
         os.makedirs(data_dir, exist_ok=True)
-        filename = os.path.join(data_dir, f"{uuid.uuid4()}-{int(time.time())}.json")
+        filename = os.path.join(data_dir, f"{system_id}-{int(time.time())}.json")
         with open(filename, 'w') as f:
             f.write(json_string)
         logger.debug(f"Wrote JSON dump to {filename}")
@@ -169,7 +171,6 @@ def main():
         args.max_iterations = 1
 
     logger = log_setup()
-    import json
     cfg = Config(args)
 
     scheduler = GathererScheduler(
@@ -184,15 +185,15 @@ def main():
     while True:
         cache, timings, errors = scheduler.tick()
 
-        if not scheduler.ready:
-            # Shouldn't happen on first tick (all gatherers start as due),
-            # but guard against partial initialisation just in case.
+        if not timings:
+            # No gatherers ran this tick; skip output and sleep.
             time.sleep(scheduler.base_tick)
             continue
 
         iteration += 1
         collected_at = round(time.time(), 3)
-        jsonout = _assemble_json(cache, collected_at, json, errors)
+        # Only include data from gatherers that ran this tick (no stale data)
+        jsonout = _assemble_json(cache, collected_at, json, errors, names=set(timings.keys()))
 
         # Print diagnostics and JSON
         print_timings(timings)
@@ -200,7 +201,7 @@ def main():
 
         # Dump JSON to file if enabled (via --dump flag or config.ini [output] dump_json)
         if cfg.dump_json:
-            dump_json_file(jsonout, logger, cfg.data_dir)
+            dump_json_file(jsonout, logger, cfg.data_dir, _SYSTEM_ID)
 
         # Check if we should exit
         if cfg.max_iterations is not None and iteration >= cfg.max_iterations:

@@ -4,7 +4,7 @@ import io
 import os
 import sys
 import unittest
-from unittest.mock import patch, mock_open, MagicMock, call
+from unittest.mock import patch, mock_open, MagicMock
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from monitoring.gather import linux_disk

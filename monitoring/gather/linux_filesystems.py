@@ -48,6 +48,7 @@ FS_IGNORE = [
     "overlay",
 ]
 
+
 class Filesystems:
     """Linux filesystem gatherer. Reads /proc/mounts (or /etc/mtab) and calls
     os.statvfs() on each real (non-virtual) mounted filesystem.
@@ -215,7 +216,7 @@ class Filesystems:
         """Parse /proc/mounts (or /etc/mtab) and statvfs each mounted filesystem.
 
         fs_reject accumulates mountpoints with no block storage so they can be
-        skipped without a redundant statvfs() call on future UpdateValues() calls.
+        skipped without a redundant statvfs() call on future update_values() calls.
         """
         self._ts = _time if _time is not None else time.time()
         self.fs_reject = []
