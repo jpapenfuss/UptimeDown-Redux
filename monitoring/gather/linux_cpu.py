@@ -141,9 +141,10 @@ class Cpu:
                     irq = softirq_line.replace(":", "").split()
                     irqname = irq.pop(0)
                     for i, cpu_name in enumerate(cpu_columns):
-                        if cpu_name in cpustats_values and cpu_name != "cpu":
+                        cpu_key = cpu_name.lower()
+                        if cpu_key in cpustats_values and cpu_key != "cpu":
                             try:
-                                cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
+                                cpustats_values[cpu_key]["softirqs"][irqname] = int(irq[i])
                             except (IndexError, ValueError, TypeError):
                                 logger.warning("get_cpu_soft_irqs: could not parse softirq value for %s/%s", cpu_name, irqname)
                     nirq_types += 1
@@ -238,6 +239,7 @@ class Cpu:
         cpustats_values["softirq_ticks"] = agg.get("softirq_ticks")
         cpustats_values["steal_ticks"] = agg.get("steal_ticks")
         cpustats_values["guest_ticks"] = agg.get("guest_ticks")
+        cpustats_values["guest_nice_ticks"] = agg.get("guest_nice_ticks")
         # Remove the now-redundant "cpu" aggregate dict since its fields are promoted.
         cpustats_values.pop("cpu", None)
 

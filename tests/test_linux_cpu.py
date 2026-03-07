@@ -58,7 +58,7 @@ softirq 5000 0 1000 0 500 0 0 100 200 0 3200
 # Sample /proc/softirqs content (matching 4 CPUs above)
 # ---------------------------------------------------------------------------
 SOFTIRQS_SAMPLE = """\
-                    cpu0       cpu1       cpu2       cpu3
+                    CPU0       CPU1       CPU2       CPU3
           HI:          0          0          0          0
        TIMER:       1000       1001       1002       1003
       NET_TX:         10         11         12         13
@@ -200,6 +200,7 @@ class Testget_cpu_proc_stats(unittest.TestCase):
         self.assertEqual(result["softirq_ticks"], 3)
         self.assertEqual(result["steal_ticks"], 2)
         self.assertEqual(result["guest_ticks"], 1)
+        self.assertEqual(result["guest_nice_ticks"], 0)
 
     def test_per_core_and_aggregate_use_same_tick_field_names(self):
         # All CPU tick fields use _ticks suffix for consistency.
