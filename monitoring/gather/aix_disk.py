@@ -196,13 +196,7 @@ def get_disk_total(lib, _time=None):
 def get_disks(lib, _time=None):
     """Call perfstat_disk() to enumerate all per-disk stats and return them as a dict.
 
-    Uses the standard two-call perfstat enumeration pattern:
-        1. Pass NULL id, NULL buffer, count=0 → returns total number of disks.
-        2. Allocate an array of that size, set id.name=b"" (FIRST_DISK), then
-           call again with the array pointer and count to fill the buffer.
-
-    The array pointer must be cast to POINTER(perfstat_disk_t) because ctypes
-    does not implicitly convert a pointer-to-array to a pointer-to-element.
+    Uses aix_util.perfstat_enumerate() to handle the two-call enumeration pattern.
 
     Renames for schema alignment:
         size / free → size_bytes / free_bytes (converted from MB)
@@ -216,42 +210,14 @@ def get_disks(lib, _time=None):
     error.
     """
     logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
-    lib.perfstat_disk.argtypes = [
-        ctypes.POINTER(aix_util.perfstat_id_t),
-        ctypes.POINTER(perfstat_disk_t),
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.perfstat_disk.restype = ctypes.c_int
-
-    # Count-only call: NULL id, NULL buffer, count=0 → returns number of disks.
-    ndisks = lib.perfstat_disk(None, None, ctypes.sizeof(perfstat_disk_t), 0)
-    if ndisks <= 0:
-        logger.error("perfstat_disk count query returned %d", ndisks)
-        return {}
-    logger.debug("get_disks: perfstat reports %d disks", ndisks)
-
-    DiskArray = perfstat_disk_t * ndisks
-    disk_buf = DiskArray()
-
-    # Start enumeration from the first disk (FIRST_DISK = empty name string).
-    first = aix_util.perfstat_id_t()
-    first.name = b""
-
-    ret = lib.perfstat_disk(
-        ctypes.byref(first),
-        ctypes.cast(disk_buf, ctypes.POINTER(perfstat_disk_t)),
-        ctypes.sizeof(perfstat_disk_t),
-        ndisks,
-    )
-    if ret != ndisks:
-        logger.error("perfstat_disk enumeration returned %d, expected %d (count mismatch)",
-                     ret, ndisks)
+    disk_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_disk, perfstat_disk_t)
+    if not disk_structs:
+        logger.error("perfstat_disk enumeration failed")
         return {}
 
     disks = {}
-    for i in range(ret):
-        d = _struct_to_dict(disk_buf[i], perfstat_disk_t)
+    for d_struct in disk_structs:
+        d = _struct_to_dict(d_struct, perfstat_disk_t)
         # Convert capacity from MB to bytes and use schema column names.
         d["size_bytes"]     = d.pop("size") * 1024 * 1024
         d["free_bytes"]     = d.pop("free") * 1024 * 1024

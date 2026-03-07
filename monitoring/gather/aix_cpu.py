@@ -224,54 +224,20 @@ class perfstat_cpu_total_t(ctypes.Structure):
 def get_cpus(_time=None):
     """Enumerate per-CPU statistics via perfstat_cpu() and return as a dict.
 
-    Calls perfstat_cpu() twice: first to query the count of CPUs, then to
-    enumerate all CPUs. Uses the perfstat_id_t cursor pattern to retrieve
-    all CPUs in a single call (no pagination needed for typical systems).
-
+    Uses aix_util.perfstat_enumerate() to handle the two-call enumeration pattern.
     The result is a dict keyed by CPU name (e.g. "cpu0", "cpu1") with each
     value being a dict of per-CPU counters. The 'state' byte is decoded to
-    a string ('online' or 'offline'). All other fields follow the same
-    normalization as get_cpu_total() (no _pad fields, renamed to match schema).
+    a string ('online' or 'offline'). Fields are renamed to match the
+    cross-platform cpu_stats schema (e.g. user → user_ticks).
 
     Returns False and logs an error if the enumeration fails.
     """
     logger.debug("get_cpus: calling perfstat_cpu")
     lib = _load_libperfstat()
 
-    lib.perfstat_cpu.argtypes = [
-        ctypes.POINTER(aix_util.perfstat_id_t),
-        ctypes.POINTER(perfstat_cpu_t),
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.perfstat_cpu.restype = ctypes.c_int
-
-    # Query count: call with NULL buffer to get the number of CPUs
-    ncpus = lib.perfstat_cpu(None, None, ctypes.sizeof(perfstat_cpu_t), 0)
-    if ncpus <= 0:
-        logger.error(f"perfstat_cpu count query returned {ncpus}, expected > 0")
-        return False
-
-    logger.debug("get_cpus: enumeration will return %d CPUs", ncpus)
-
-    # Allocate array for all CPUs
-    CpuArray = perfstat_cpu_t * ncpus
-    cpu_buf = CpuArray()
-
-    # Initialize perfstat_id_t with name="" (FIRST_CPU constant)
-    id_buf = aix_util.perfstat_id_t()
-    id_buf.name = b""
-
-    # Enumerate all CPUs
-    ret = lib.perfstat_cpu(
-        ctypes.byref(id_buf),
-        ctypes.cast(cpu_buf, ctypes.POINTER(perfstat_cpu_t)),
-        ctypes.sizeof(perfstat_cpu_t),
-        ncpus,
-    )
-
-    if ret != ncpus:
-        logger.error(f"perfstat_cpu enumeration returned {ret}, expected {ncpus}")
+    cpu_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_cpu, perfstat_cpu_t)
+    if not cpu_structs:
+        logger.error("perfstat_cpu enumeration failed")
         return False
 
     # Tick field renames: match the cross-platform cpu_stats schema so per-CPU
@@ -285,8 +251,7 @@ def get_cpus(_time=None):
 
     # Convert to dict keyed by CPU name
     result = {}
-    for i in range(ncpus):
-        cpu = cpu_buf[i]
+    for cpu in cpu_structs:
         cpu_name = cpu.name.decode("ascii", errors="replace").rstrip("\x00")
         cpu_dict = {}
 

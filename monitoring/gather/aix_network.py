@@ -65,12 +65,7 @@ class perfstat_netinterface_t(ctypes.Structure):
 def get_interfaces(_time=None):
     """Call perfstat_netinterface() and return per-interface stats as a dict.
 
-    Uses the standard two-call perfstat enumeration pattern:
-        1. NULL id, NULL buffer, count=0 → returns total interface count.
-        2. Allocate array, set id.name=b"" (FIRST_INTERFACE), call with count.
-
-    The array pointer is cast to POINTER(perfstat_netinterface_t) because ctypes
-    does not implicitly convert a pointer-to-array to a pointer-to-element.
+    Uses aix_util.perfstat_enumerate() to handle the two-call enumeration pattern.
 
     Output keys are normalized to schema column names:
         ipacets    → ipackets  (corrects the long-standing typo in libperfstat.h)
@@ -90,43 +85,13 @@ def get_interfaces(_time=None):
         logger.error("Can't load libperfstat: %s", e)
         return {}
 
-    lib.perfstat_netinterface.argtypes = [
-        ctypes.POINTER(aix_util.perfstat_id_t),
-        ctypes.POINTER(perfstat_netinterface_t),
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.perfstat_netinterface.restype = ctypes.c_int
-
-    # Count-only call: NULL id, NULL buffer, count=0 → returns number of interfaces.
-    nifaces = lib.perfstat_netinterface(
-        None, None, ctypes.sizeof(perfstat_netinterface_t), 0
-    )
-    if nifaces <= 0:
-        logger.error("perfstat_netinterface count query returned %d", nifaces)
-        return {}
-    logger.debug("get_interfaces: perfstat reports %d interfaces", nifaces)
-
-    IfaceArray = perfstat_netinterface_t * nifaces
-    iface_buf = IfaceArray()
-
-    first = aix_util.perfstat_id_t()
-    first.name = b""
-
-    ret = lib.perfstat_netinterface(
-        ctypes.byref(first),
-        ctypes.cast(iface_buf, ctypes.POINTER(perfstat_netinterface_t)),
-        ctypes.sizeof(perfstat_netinterface_t),
-        nifaces,
-    )
-    if ret != nifaces:
-        logger.error("perfstat_netinterface enumeration returned %d, expected %d (count mismatch)",
-                     ret, nifaces)
+    iface_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_netinterface, perfstat_netinterface_t)
+    if not iface_structs:
+        logger.error("perfstat_netinterface enumeration failed")
         return {}
 
     interfaces = {}
-    for i in range(ret):
-        buf = iface_buf[i]
+    for buf in iface_structs:
         iface_name = buf.name.decode("ascii", errors="replace").rstrip("\x00")
         entry = {
             "description":  buf.description.decode("ascii", errors="replace").rstrip("\x00"),
