@@ -85,30 +85,38 @@ def get_interfaces(_time=None):
         logger.error("Can't load libperfstat: %s", e)
         return {}
 
-    iface_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_netinterface, perfstat_netinterface_t)
-    if not iface_structs:
-        logger.error("perfstat_netinterface enumeration failed")
+    try:
+        iface_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_netinterface, perfstat_netinterface_t)
+        if not iface_structs:
+            logger.error("perfstat_netinterface enumeration failed")
+            return {}
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
+        logger.error("aix_network: perfstat_netinterface enumeration failed: %s", e)
         return {}
 
     interfaces = {}
-    for buf in iface_structs:
-        iface_name = buf.name.decode("ascii", errors="replace").rstrip("\x00")
-        entry = {
-            "description":  buf.description.decode("ascii", errors="replace").rstrip("\x00"),
-            "type":         buf.type,
-            "mtu":          buf.mtu,
-            "ipackets":     buf.ipacets,    # correct the libperfstat.h typo at output time
-            "ibytes":       buf.ibytes,
-            "ierrors":      buf.ierrors,
-            "opackets":     buf.opackets,
-            "obytes":       buf.obytes,
-            "oerrors":      buf.oerrors,
-            "collisions":   buf.collisions,
-            "speed_mbps":   buf.bitrate // 1_000_000,  # bps → Mbps; matches Linux speed_mbps
-            "idrop":        buf.if_iqdrops,             # input queue drops; matches Linux idrop
-            "if_arpdrops":  buf.if_arpdrops,
-        }
-        interfaces[iface_name] = entry
+    try:
+        for buf in iface_structs:
+            iface_name = buf.name.decode("ascii", errors="replace").rstrip("\x00")
+            entry = {
+                "description":  buf.description.decode("ascii", errors="replace").rstrip("\x00"),
+                "type":         buf.type,
+                "mtu":          buf.mtu,
+                "ipackets":     buf.ipacets,    # correct the libperfstat.h typo at output time
+                "ibytes":       buf.ibytes,
+                "ierrors":      buf.ierrors,
+                "opackets":     buf.opackets,
+                "obytes":       buf.obytes,
+                "oerrors":      buf.oerrors,
+                "collisions":   buf.collisions,
+                "speed_mbps":   buf.bitrate // 1_000_000,  # bps → Mbps; matches Linux speed_mbps
+                "idrop":        buf.if_iqdrops,             # input queue drops; matches Linux idrop
+                "if_arpdrops":  buf.if_arpdrops,
+            }
+            interfaces[iface_name] = entry
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError) as e:
+        logger.error("aix_network: error processing interface structs: %s", e)
+        return {}
     logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
     for iface, e in interfaces.items():
         logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "

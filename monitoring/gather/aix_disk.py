@@ -252,7 +252,13 @@ class AixDisk:
         """Load libperfstat once and collect both aggregate and per-disk stats."""
         logger.debug("AixDisk: initializing")
         ts = _time if _time is not None else time.time()
-        lib = _load_lib()
+        try:
+            lib = _load_lib()
+        except OSError as e:
+            logger.error("aix_disk: could not load libperfstat: %s", e)
+            self.disk_total = False
+            self.blockdevices = False
+            return
         self.disk_total = get_disk_total(lib, ts)
         self.blockdevices = get_disks(lib, ts)
         logger.debug("AixDisk: initialized (disk_total ok=%s, blockdevices=%d)",

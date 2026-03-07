@@ -49,23 +49,29 @@ class Memory:
 
         if not util.caniread(meminfo_path):
             raise RuntimeError(f"Can't open {meminfo_path} for reading.")
-        with open(meminfo_path, "r") as reader:
-            meminfo_line = reader.readline().strip()
-            while meminfo_line != "":
-                # Replace the trailing colon on the key so we can split uniformly.
-                # Example before: "MemTotal:       16384 kB"
-                # Example after split: ["MemTotal", "16384", "kB"]
-                meminfo_line = meminfo_line.replace(":", " ")
-                line = meminfo_line.split()
-                key = util.to_snake_case(line[0])
-                line[1] = int(line[1])
-                # Three tokens means there's a unit multiplier (e.g. "kB").
-                if len(line) == 3:
-                    # /proc/meminfo uses 'kB' to mean 1024 bytes; normalize to IEC.
-                    unit = 'KiB' if line[2] == 'kB' else line[2]
-                    line[1] = util.tobytes(line[1], unit)
-                meminfo_values[key] = line[1]
+        try:
+            with open(meminfo_path, "r") as reader:
                 meminfo_line = reader.readline().strip()
+                while meminfo_line != "":
+                    try:
+                        # Replace the trailing colon on the key so we can split uniformly.
+                        # Example before: "MemTotal:       16384 kB"
+                        # Example after split: ["MemTotal", "16384", "kB"]
+                        meminfo_line = meminfo_line.replace(":", " ")
+                        line = meminfo_line.split()
+                        key = util.to_snake_case(line[0])
+                        line[1] = int(line[1])
+                        # Three tokens means there's a unit multiplier (e.g. "kB").
+                        if len(line) == 3:
+                            # /proc/meminfo uses 'kB' to mean 1024 bytes; normalize to IEC.
+                            unit = 'KiB' if line[2] == 'kB' else line[2]
+                            line[1] = util.tobytes(line[1], unit)
+                        meminfo_values[key] = line[1]
+                    except (ValueError, IndexError, TypeError) as e:
+                        logger.warning("GetMeminfo: error parsing line %r: %s", meminfo_line, e)
+                    meminfo_line = reader.readline().strip()
+        except (IOError, OSError) as e:
+            raise RuntimeError(f"Error reading {meminfo_path}: {e}")
         nfields = len(meminfo_values)
         logger.debug("GetMeminfo: parsed %d fields", nfields)
         logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
@@ -105,40 +111,47 @@ class Memory:
                 "Can't read /proc/slabinfo - I may not be root. Will not collect slab stats"
             )
             return False
-        with open("/proc/slabinfo", "r") as reader:
-            slabline = reader.readline()
-            while slabline != "":
-                # Skip the version header ("slabinfo - version: 2.1") and the
-                # column-name comment line ("# name  <active_objs> ...").
-                if slabline.startswith("slabinfo") or slabline.startswith("# name"):
-                    slabline = reader.readline()
-                    continue
-                # Strip ": tunables" and ": slabdata" section markers so the
-                # remaining tokens are uniformly positional.
-                # Before: ext4_inode_cache 30338 44330 1096 29 8 : tunables 0 0 0 : slabdata 2834 2834 0
-                # After:  ext4_inode_cache 30338 44330 1096 29 8   0 0 0   2834 2834 0
-                slabline = slabline.replace(": tunables", "").replace(": slabdata", "")
-                slab = slabline.strip().split()
-                slabname = slab.pop(0)
-                slabs[slabname] = dict(
-                    zip(
-                        [
-                            "active_objs",
-                            "num_objs",
-                            "objsize",
-                            "objperslab",
-                            "pagesperslab",
-                            "limit",
-                            "batchcount",
-                            "sharedfactor",
-                            "active_slabs",
-                            "num_slabs",
-                            "sharedavail",
-                        ],
-                        list(map(int, slab)),
-                    )
-                )
+        try:
+            with open("/proc/slabinfo", "r") as reader:
                 slabline = reader.readline()
+                while slabline != "":
+                    try:
+                        # Skip the version header ("slabinfo - version: 2.1") and the
+                        # column-name comment line ("# name  <active_objs> ...").
+                        if slabline.startswith("slabinfo") or slabline.startswith("# name"):
+                            slabline = reader.readline()
+                            continue
+                        # Strip ": tunables" and ": slabdata" section markers so the
+                        # remaining tokens are uniformly positional.
+                        # Before: ext4_inode_cache 30338 44330 1096 29 8 : tunables 0 0 0 : slabdata 2834 2834 0
+                        # After:  ext4_inode_cache 30338 44330 1096 29 8   0 0 0   2834 2834 0
+                        slabline = slabline.replace(": tunables", "").replace(": slabdata", "")
+                        slab = slabline.strip().split()
+                        slabname = slab.pop(0)
+                        slabs[slabname] = dict(
+                            zip(
+                                [
+                                    "active_objs",
+                                    "num_objs",
+                                    "objsize",
+                                    "objperslab",
+                                    "pagesperslab",
+                                    "limit",
+                                    "batchcount",
+                                    "sharedfactor",
+                                    "active_slabs",
+                                    "num_slabs",
+                                    "sharedavail",
+                                ],
+                                list(map(int, slab)),
+                            )
+                        )
+                    except (ValueError, IndexError, TypeError) as e:
+                        logger.warning("GetSlabinfo: error parsing slab entry: %s", e)
+                    slabline = reader.readline()
+        except (IOError, OSError) as e:
+            logger.error("linux_memory: error reading /proc/slabinfo: %s", e)
+            return False
         nslabs = len(slabs)
         logger.debug("GetSlabinfo: parsed %d slab entries", nslabs)
         # Log only the top 5 slabs by active_objs — there can be hundreds of

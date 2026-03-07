@@ -119,11 +119,21 @@ def _build_gatherers():
     }
 
 
-def _assemble_json(cache, collected_at, json_module):
-    """Merge gatherer cache into a single JSON string."""
-    output = {"system_id": _SYSTEM_ID, "collected_at": collected_at}
+def _assemble_json(cache, collected_at, json_module, errors=None):
+    """Merge gatherer cache into a single JSON string.
+
+    Args:
+        cache: dict of gatherer name -> result (may contain None for failed gatherers)
+        collected_at: float timestamp (seconds since epoch)
+        json_module: json module
+        errors: dict of gatherer name -> {error, message}; defaults to empty dict
+
+    Failed gatherers have cache[name] = None and are skipped during merge.
+    """
+    output = {"system_id": _SYSTEM_ID, "collected_at": collected_at, "collection_errors": errors or {}}
     for data in cache.values():
-        output.update(data)
+        if data is not None:
+            output.update(data)
     return json_module.dumps(output, indent=4)
 
 
@@ -172,7 +182,7 @@ def main():
     iteration = 0
 
     while True:
-        cache, timings = scheduler.tick()
+        cache, timings, errors = scheduler.tick()
 
         if not scheduler.ready:
             # Shouldn't happen on first tick (all gatherers start as due),
@@ -182,7 +192,7 @@ def main():
 
         iteration += 1
         collected_at = round(time.time(), 3)
-        jsonout = _assemble_json(cache, collected_at, json)
+        jsonout = _assemble_json(cache, collected_at, json, errors)
 
         # Print diagnostics and JSON
         print_timings(timings)

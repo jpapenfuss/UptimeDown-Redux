@@ -102,23 +102,30 @@ class Disk:
             return None
 
         nskipped = 0
-        with open(self.proc_diskstats_path, "r") as reader:
-            # Example line:
-            #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
-            # Fields: major minor name [DISKSTAT_KEYS...]
-            diskstats_line = reader.readline().strip().split()
-            while diskstats_line != []:
-                if diskstats_line[2].startswith(IGNORE_PREFIXES):
-                    # Skip loop and ram devices — they inflate the device list
-                    # with entries that are never interesting for monitoring.
-                    logger.debug("get_devices: skipping %s (ignored prefix)", diskstats_line[2])
-                    nskipped += 1
-                    diskstats_line = reader.readline().strip().split()
-                    continue
-                # Pop the device name from index 2 before zipping the counters.
-                diskname = diskstats_line.pop(2)
-                diskstats[diskname] = util.dict_from_fields(diskstats_line, DISKSTAT_KEYS)
+        try:
+            with open(self.proc_diskstats_path, "r") as reader:
+                # Example line:
+                #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
+                # Fields: major minor name [DISKSTAT_KEYS...]
                 diskstats_line = reader.readline().strip().split()
+                while diskstats_line != []:
+                    try:
+                        if diskstats_line[2].startswith(IGNORE_PREFIXES):
+                            # Skip loop and ram devices — they inflate the device list
+                            # with entries that are never interesting for monitoring.
+                            logger.debug("get_devices: skipping %s (ignored prefix)", diskstats_line[2])
+                            nskipped += 1
+                            diskstats_line = reader.readline().strip().split()
+                            continue
+                        # Pop the device name from index 2 before zipping the counters.
+                        diskname = diskstats_line.pop(2)
+                        diskstats[diskname] = util.dict_from_fields(diskstats_line, DISKSTAT_KEYS)
+                    except (IndexError, ValueError, TypeError) as e:
+                        logger.warning("get_devices: error parsing diskstats line: %s", e)
+                    diskstats_line = reader.readline().strip().split()
+        except (IOError, OSError) as e:
+            logger.error("linux_disk: error reading /proc/diskstats: %s", e)
+            return None
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
         for devname, s in diskstats.items():
             logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d "
