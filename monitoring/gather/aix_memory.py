@@ -101,8 +101,8 @@ def get_memory_total(_time=None):
     logger.debug("get_memory_total: calling perfstat_memory_total")
     try:
         lib = aix_util.load_libperfstat()
-    except OSError as e:
-        logger.error("Can't load libperfstat: %s", e)
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
+        logger.error("aix_memory: could not load libperfstat: %s", e)
         return False
 
     try:

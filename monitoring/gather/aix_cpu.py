@@ -235,7 +235,7 @@ def get_cpus(_time=None):
     logger.debug("get_cpus: calling perfstat_cpu")
     try:
         lib = _load_libperfstat()
-    except OSError as e:
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
         logger.error("aix_cpu.get_cpus: could not load libperfstat: %s", e)
         return False
 
@@ -306,7 +306,7 @@ def get_cpu_total(_time=None):
     logger.debug("get_cpu_total: calling perfstat_cpu_total")
     try:
         lib = _load_libperfstat()
-    except OSError as e:
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
         logger.error("aix_cpu.get_cpu_total: could not load libperfstat: %s", e)
         return False
 
