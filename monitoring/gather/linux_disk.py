@@ -56,7 +56,6 @@ DISKSTAT_KEYS = (
 )
 
 
-
 class Disk:
     """Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters.
 

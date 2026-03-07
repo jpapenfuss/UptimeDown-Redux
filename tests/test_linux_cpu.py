@@ -1,4 +1,4 @@
-"""Tests for monitoring/gather/linux_cpu.py — Cpu.GetCpuinfo(), GetCpuProcStats(), and GetCpuSoftIrqs()."""
+"""Tests for monitoring/gather/linux_cpu.py — Cpu.get_cpuinfo(), get_cpu_proc_stats(), and get_cpu_soft_irqs()."""
 import io
 import os
 import sys
@@ -66,16 +66,16 @@ SOFTIRQS_SAMPLE = """\
 """
 
 
-class TestGetCpuinfo(unittest.TestCase):
-    """Tests for GetCpuinfo(): /proc/cpuinfo parsing, type coercion, and error handling."""
+class Testget_cpuinfo(unittest.TestCase):
+    """Tests for get_cpuinfo(): /proc/cpuinfo parsing, type coercion, and error handling."""
 
     def _make_cpu(self, content):
-        """Return a Cpu instance with GetCpuinfo() driven by content string."""
+        """Return a Cpu instance with get_cpuinfo() driven by content string."""
         with patch("monitoring.gather.util.caniread", return_value=True), \
              patch("builtins.open", lambda *a, **kw: io.StringIO(content)), \
              patch("time.time", return_value=1000.0):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            return cpu.GetCpuinfo()
+            return cpu.get_cpuinfo()
 
     def test_returns_dict(self):
         result = self._make_cpu(CPUINFO_SAMPLE)
@@ -125,7 +125,7 @@ class TestGetCpuinfo(unittest.TestCase):
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            result = cpu.GetCpuinfo()
+            result = cpu.get_cpuinfo()
         self.assertIs(result, False)
 
     def test_line_without_colon_is_skipped(self):
@@ -137,8 +137,8 @@ class TestGetCpuinfo(unittest.TestCase):
         self.assertNotIn("no_colon_here", result)
 
 
-class TestGetCpuProcStats(unittest.TestCase):
-    """Tests for GetCpuProcStats(): /proc/stat parsing, per-core dicts, and schema normalisation."""
+class Testget_cpu_proc_stats(unittest.TestCase):
+    """Tests for get_cpu_proc_stats(): /proc/stat parsing, per-core dicts, and schema normalisation."""
 
     def _make_stats(self, stat_content=STAT_SAMPLE, softirq_content=SOFTIRQS_SAMPLE):
         def fake_open(path, *args, **kwargs):
@@ -150,7 +150,7 @@ class TestGetCpuProcStats(unittest.TestCase):
              patch("builtins.open", side_effect=fake_open), \
              patch("time.time", return_value=2000.0):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            return cpu.GetCpuProcStats()
+            return cpu.get_cpu_proc_stats()
 
     def test_returns_dict(self):
         self.assertIsInstance(self._make_stats(), dict)
@@ -216,11 +216,11 @@ class TestGetCpuProcStats(unittest.TestCase):
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            result = cpu.GetCpuProcStats()
+            result = cpu.get_cpu_proc_stats()
         self.assertIs(result, False)
 
     def test_softirqs_unreadable_does_not_crash(self):
-        # GetCpuSoftIrqs returning False must not break proc/stat parsing.
+        # get_cpu_soft_irqs returning False must not break proc/stat parsing.
         def caniread_side(path):
             # /proc/stat is readable; /proc/softirqs is not
             return "softirqs" not in path
@@ -232,7 +232,7 @@ class TestGetCpuProcStats(unittest.TestCase):
              patch("builtins.open", side_effect=fake_open), \
              patch("time.time", return_value=2000.0):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            result = cpu.GetCpuProcStats()
+            result = cpu.get_cpu_proc_stats()
         # Must return a valid dict (not crash, not return False)
         self.assertIsInstance(result, dict)
         self.assertNotIn("_time", result)
@@ -240,8 +240,8 @@ class TestGetCpuProcStats(unittest.TestCase):
         self.assertIn("user_ticks", result)  # But top-level promoted keys exist
 
 
-class TestGetCpuSoftIrqs(unittest.TestCase):
-    """Tests for GetCpuSoftIrqs(): /proc/softirqs parsing and per-CPU merge into cpustats."""
+class Testget_cpu_soft_irqs(unittest.TestCase):
+    """Tests for get_cpu_soft_irqs(): /proc/softirqs parsing and per-CPU merge into cpustats."""
 
     def _make_softirqs(self, content=SOFTIRQS_SAMPLE):
         cpustats = {
@@ -254,7 +254,7 @@ class TestGetCpuSoftIrqs(unittest.TestCase):
         with patch("monitoring.gather.util.caniread", return_value=True), \
              patch("builtins.open", lambda *a, **kw: io.StringIO(content)):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            return cpu.GetCpuSoftIrqs(cpustats)
+            return cpu.get_cpu_soft_irqs(cpustats)
 
     def test_returns_dict(self):
         self.assertIsInstance(self._make_softirqs(), dict)
@@ -280,7 +280,7 @@ class TestGetCpuSoftIrqs(unittest.TestCase):
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            result = cpu.GetCpuSoftIrqs({})
+            result = cpu.get_cpu_soft_irqs({})
         self.assertIs(result, False)
 
 
@@ -288,14 +288,14 @@ LOADAVG_SAMPLE = "0.42 1.23 2.10 3/456 78910\n"
 LOADAVG_SHORT  = "0.42\n"  # malformed — fewer than 3 fields
 
 
-class TestGetLoadAvg(unittest.TestCase):
-    """Tests for GetLoadAvg(): /proc/loadavg parsing and error paths."""
+class Testget_load_avg(unittest.TestCase):
+    """Tests for get_load_avg(): /proc/loadavg parsing and error paths."""
 
     def _make_loadavg(self, content):
         with patch("monitoring.gather.util.caniread", return_value=True), \
              patch("builtins.open", lambda *a, **kw: io.StringIO(content)):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            return cpu.GetLoadAvg()
+            return cpu.get_load_avg()
 
     def test_returns_dict(self):
         result = self._make_loadavg(LOADAVG_SAMPLE)
@@ -316,7 +316,7 @@ class TestGetLoadAvg(unittest.TestCase):
     def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-            result = cpu.GetLoadAvg()
+            result = cpu.get_load_avg()
         self.assertIs(result, False)
 
     def test_returns_false_when_malformed(self):
@@ -324,7 +324,7 @@ class TestGetLoadAvg(unittest.TestCase):
         self.assertIs(result, False)
 
     def test_merged_into_cpustat_values(self):
-        """UpdateValues() must merge load averages into cpustat_values."""
+        """update_values() must merge load averages into cpustat_values."""
         def fake_open(path, *a, **kw):
             if "loadavg" in path:
                 return io.StringIO(LOADAVG_SAMPLE)
@@ -338,28 +338,28 @@ class TestGetLoadAvg(unittest.TestCase):
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
             cpu._ts = 3000.0
             cpu.cpuinfo_values = {}
-            cpu.UpdateValues()
+            cpu.update_values()
 
         self.assertAlmostEqual(cpu.cpustat_values["loadavg_1"],  0.42)
         self.assertAlmostEqual(cpu.cpustat_values["loadavg_5"],  1.23)
         self.assertAlmostEqual(cpu.cpustat_values["loadavg_15"], 2.10)
 
 
-class TestUpdateValues(unittest.TestCase):
-    """Tests for Cpu.UpdateValues() and Cpu.__init__() wiring."""
+class Testupdate_values(unittest.TestCase):
+    """Tests for Cpu.update_values() and Cpu.__init__() wiring."""
 
     def test_updatevalues_populates_both_attributes(self):
         cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
-        cpu.GetCpuinfo = MagicMock(return_value={"processor": 0})
-        cpu.GetCpuProcStats = MagicMock(return_value={"user_ticks": 10})
-        cpu.UpdateValues()
+        cpu.get_cpuinfo = MagicMock(return_value={"processor": 0})
+        cpu.get_cpu_proc_stats = MagicMock(return_value={"user_ticks": 10})
+        cpu.update_values()
         self.assertEqual(cpu.cpuinfo_values["processor"], 0)
         self.assertEqual(cpu.cpustat_values["user_ticks"], 10)
-        cpu.GetCpuinfo.assert_called_once()
-        cpu.GetCpuProcStats.assert_called_once()
+        cpu.get_cpuinfo.assert_called_once()
+        cpu.get_cpu_proc_stats.assert_called_once()
 
     def test_updatevalues_called_on_init(self):
-        with patch.object(linux_cpu.Cpu, "UpdateValues") as mock_update:
+        with patch.object(linux_cpu.Cpu, "update_values") as mock_update:
             cpu = linux_cpu.Cpu.__new__(linux_cpu.Cpu)
             cpu.__init__()
         mock_update.assert_called_once()

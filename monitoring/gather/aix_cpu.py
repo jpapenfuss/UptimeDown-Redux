@@ -5,7 +5,7 @@
 #                    including usage ticks, load averages, syscall counts, and
 #                    LPAR/POWER-specific PURR/SPURR donated/stolen cycle counters.
 #
-# Call UpdateValues() to refresh. The class interface mirrors Linux Cpu so that
+# Call update_values() to refresh. The class interface mirrors Linux Cpu so that
 # __main__.py can treat them interchangeably (noting AIX has no cpuinfo_values).
 import sys
 sys.dont_write_bytecode = True
@@ -344,15 +344,15 @@ def get_cpu_total(_time=None):
     # Normalize to schema column names so AIX and Linux rows share the same keys.
     # AIX-only fields keep their names; cross-platform tick counters are renamed.
     la = raw.pop("loadavg")
-    raw["user_ticks"]    = raw.pop("user")
-    raw["sys_ticks"]     = raw.pop("sys")
-    raw["idle_ticks"]    = raw.pop("idle")
-    raw["iowait_ticks"]  = raw.pop("wait")
-    raw["processor_hz"]  = raw.pop("processorHZ")
-    raw["ctxt"]          = raw.pop("pswitch")    # context switches; matches Linux ctxt
-    raw["loadavg_1"]     = la[0] / 65536.0
-    raw["loadavg_5"]     = la[1] / 65536.0
-    raw["loadavg_15"]    = la[2] / 65536.0
+    raw["user_ticks"] = raw.pop("user")
+    raw["sys_ticks"] = raw.pop("sys")
+    raw["idle_ticks"] = raw.pop("idle")
+    raw["iowait_ticks"] = raw.pop("wait")
+    raw["processor_hz"] = raw.pop("processorHZ")
+    raw["ctxt"] = raw.pop("pswitch")  # context switches; matches Linux ctxt
+    raw["loadavg_1"] = la[0] / 65536.0
+    raw["loadavg_5"] = la[1] / 65536.0
+    raw["loadavg_15"] = la[2] / 65536.0
     result = raw
 
     logger.debug("get_cpu_total: description=%r ncpus=%d processor_hz=%d",
@@ -368,12 +368,12 @@ def get_cpu_total(_time=None):
                  result.get("syscall", 0), result.get("pswitch", 0),
                  result.get("sysfork", 0), result.get("sysexec", 0))
     total_donated = (result.get("idle_donated_purr", 0) + result.get("busy_donated_purr", 0))
-    total_stolen  = (result.get("idle_stolen_purr",  0) + result.get("busy_stolen_purr",  0))
+    total_stolen = (result.get("idle_stolen_purr", 0) + result.get("busy_stolen_purr", 0))
     logger.debug("get_cpu_total: PURR donated=%d stolen=%d (idle_donated=%d busy_donated=%d "
                  "idle_stolen=%d busy_stolen=%d)",
                  total_donated, total_stolen,
                  result.get("idle_donated_purr", 0), result.get("busy_donated_purr", 0),
-                 result.get("idle_stolen_purr",  0), result.get("busy_stolen_purr",  0))
+                 result.get("idle_stolen_purr", 0), result.get("busy_stolen_purr", 0))
     return result
 
 
@@ -388,20 +388,20 @@ class AixCpu:
     output. There is no cpuinfo_values attribute on this class.
     """
 
-    def UpdateValues(self):
+    def update_values(self):
         """Refresh cpustat_values and cpus by calling perfstat functions again."""
-        logger.debug("AixCpu.UpdateValues: starting")
+        logger.debug("AixCpu.update_values: starting")
         ts = getattr(self, '_ts', None)
         self.cpustat_values = get_cpu_total(ts)
         self.cpus = get_cpus(ts)
-        logger.debug("AixCpu.UpdateValues: complete (total_ok=%s, cpus_ok=%s)",
+        logger.debug("AixCpu.update_values: complete (total_ok=%s, cpus_ok=%s)",
                      self.cpustat_values is not False, self.cpus is not False)
 
     def __init__(self, _time=None):
         """Initialise the gatherer and immediately collect CPU stats."""
         self._ts = _time if _time is not None else time.time()
         logger.debug("AixCpu: initializing")
-        self.UpdateValues()
+        self.update_values()
 
 
 if __name__ == "__main__":

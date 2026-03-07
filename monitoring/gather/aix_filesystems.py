@@ -173,11 +173,11 @@ class AixFilesystems:
         logger.debug("AixFilesystems: initializing")
         self._ts = _time if _time is not None else time.time()
         self.filesystems = self.get_filesystems()
-                # Count mounted filesystems.
+        # Count mounted filesystems.
         nmounted = sum(1 for k, v in self.filesystems.items()
-                                             if v.get("mounted"))
+                       if v.get("mounted"))
         logger.debug("AixFilesystems: initialized (%d total, %d mounted)",
-                                         len(self.filesystems), nmounted)
+                     len(self.filesystems), nmounted)
 
 
 if __name__ == "__main__":

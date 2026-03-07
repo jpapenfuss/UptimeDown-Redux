@@ -36,17 +36,17 @@ logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
 IMDS_IP = "169.254.169.254"
-_TOKEN_PATH         = "/latest/api/token"
-_IDENTITY_PATH      = "/latest/dynamic/instance-identity/document"
-_LIFECYCLE_PATH     = "/latest/meta-data/instance-life-cycle"
-_PUBLIC_IP_PATH     = "/latest/meta-data/public-ipv4"
-_IAM_INFO_PATH      = "/latest/meta-data/iam/info"
-_TAGS_PATH          = "/latest/meta-data/tags/instance"
-_MACS_PATH          = "/latest/meta-data/network/interfaces/macs/"
+_TOKEN_PATH = "/latest/api/token"
+_IDENTITY_PATH = "/latest/dynamic/instance-identity/document"
+_LIFECYCLE_PATH = "/latest/meta-data/instance-life-cycle"
+_PUBLIC_IP_PATH = "/latest/meta-data/public-ipv4"
+_IAM_INFO_PATH = "/latest/meta-data/iam/info"
+_TAGS_PATH = "/latest/meta-data/tags/instance"
+_MACS_PATH = "/latest/meta-data/network/interfaces/macs/"
 _MAINTENANCE_SCHEDULED_PATH = "/latest/meta-data/events/maintenance/scheduled"
-_MAINTENANCE_HISTORY_PATH   = "/latest/meta-data/events/maintenance/history"
-_SPOT_ACTION_PATH           = "/latest/meta-data/spot/instance-action"
-_REBALANCE_PATH             = "/latest/meta-data/events/recommendations/rebalance"
+_MAINTENANCE_HISTORY_PATH = "/latest/meta-data/events/maintenance/history"
+_SPOT_ACTION_PATH = "/latest/meta-data/spot/instance-action"
+_REBALANCE_PATH = "/latest/meta-data/events/recommendations/rebalance"
 
 # Instance type prefixes eligible for CPU burst credits.
 _BURST_PREFIXES = ("t1.", "t2.", "t3.", "t3a.", "t4g.")

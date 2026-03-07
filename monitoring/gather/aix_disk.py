@@ -6,7 +6,7 @@
 #   blockdevices  — per-disk stats dict keyed by disk name (perfstat_disk_t),
 #                   matching the shape of the Linux Disk.blockdevices dict
 #
-# Call __init__() (re-instantiate) or add an UpdateValues() method to refresh.
+# Call __init__() (re-instantiate) or add an update_values() method to refresh.
 import sys
 sys.dont_write_bytecode = True
 import ctypes
@@ -26,7 +26,7 @@ logger.addHandler(logging.NullHandler())
 IDENTIFIER_LENGTH = 64
 
 # Aliases kept so existing test patches/imports continue to work without change.
-_load_lib      = aix_util.load_libperfstat
+_load_lib = aix_util.load_libperfstat
 _struct_to_dict = aix_util.struct_to_dict
 
 
@@ -177,15 +177,15 @@ def get_disk_total(lib, _time=None):
 
     result = _struct_to_dict(buf, perfstat_disk_total_t)
     # Rename to schema column names and convert capacity to bytes.
-    result["ndisks"]        = result.pop("number")
-    result["size_bytes"]    = result.pop("size") * 1024 * 1024
-    result["free_bytes"]    = result.pop("free") * 1024 * 1024
-    result["read_blocks"]   = result.pop("rblks")
-    result["write_blocks"]  = result.pop("wblks")
-    result["read_ticks"]    = result.pop("rserv")    # cumulative ms; matches Linux read_ticks
-    result["write_ticks"]   = result.pop("wserv")    # cumulative ms; matches Linux write_ticks
-    result["read_ios"]      = result.pop("xrate")    # read transfer count; matches Linux read_ios
-    result["write_ios"]     = result["xfers"] - result["read_ios"]  # derived; matches Linux write_ios
+    result["ndisks"] = result.pop("number")
+    result["size_bytes"] = result.pop("size") * 1024 * 1024
+    result["free_bytes"] = result.pop("free") * 1024 * 1024
+    result["read_blocks"] = result.pop("rblks")
+    result["write_blocks"] = result.pop("wblks")
+    result["read_ticks"] = result.pop("rserv")  # cumulative ms; matches Linux read_ticks
+    result["write_ticks"] = result.pop("wserv")  # cumulative ms; matches Linux write_ticks
+    result["read_ios"] = result.pop("xrate")  # read transfer count; matches Linux read_ios
+    result["write_ios"] = result["xfers"] - result["read_ios"]  # derived
     logger.debug("get_disk_total: ndisks=%d size_bytes=%d free_bytes=%d xfers=%d",
                  result["ndisks"], result["size_bytes"], result["free_bytes"], result["xfers"])
     logger.debug("get_disk_total: read_blocks=%d write_blocks=%d read_ios=%d write_ios=%d",
@@ -219,20 +219,24 @@ def get_disks(lib, _time=None):
     for d_struct in disk_structs:
         d = _struct_to_dict(d_struct, perfstat_disk_t)
         # Convert capacity from MB to bytes and use schema column names.
-        d["size_bytes"]     = d.pop("size") * 1024 * 1024
-        d["free_bytes"]     = d.pop("free") * 1024 * 1024
-        d["read_blocks"]    = d.pop("rblks")
-        d["write_blocks"]   = d.pop("wblks")
-        d["read_ticks"]     = d.pop("rserv")    # cumulative ms; matches Linux read_ticks
-        d["write_ticks"]    = d.pop("wserv")    # cumulative ms; matches Linux write_ticks
-        d["read_ios"]       = d.pop("xrate")    # read transfer count; matches Linux read_ios
-        d["write_ios"]      = d["xfers"] - d["read_ios"]  # derived; matches Linux write_ios
+        d["size_bytes"] = d.pop("size") * 1024 * 1024
+        d["free_bytes"] = d.pop("free") * 1024 * 1024
+        d["read_blocks"] = d.pop("rblks")
+        d["write_blocks"] = d.pop("wblks")
+        d["read_ticks"] = d.pop("rserv")  # cumulative ms; matches Linux read_ticks
+        d["write_ticks"] = d.pop("wserv")  # cumulative ms; matches Linux write_ticks
+        d["read_ios"] = d.pop("xrate")  # read transfer count; matches Linux read_ios
+        d["write_ios"] = d["xfers"] - d["read_ios"]  # derived
         disk_name = d.pop("name")
         disks[disk_name] = d
     logger.debug("get_disks: collected %d disks", len(disks))
     for dname, d in disks.items():
-        logger.debug("get_disks:   %s size_bytes=%d free_bytes=%d xfers=%d read_ios=%d write_ios=%d vgname=%r",
-                     dname, d["size_bytes"], d["free_bytes"], d["xfers"], d["read_ios"], d["write_ios"], d["vgname"])
+        logger.debug(
+            "get_disks:   %s size_bytes=%d free_bytes=%d xfers=%d "
+            "read_ios=%d write_ios=%d vgname=%r",
+            dname, d["size_bytes"], d["free_bytes"], d["xfers"],
+            d["read_ios"], d["write_ios"], d["vgname"],
+        )
     return disks
 
 
