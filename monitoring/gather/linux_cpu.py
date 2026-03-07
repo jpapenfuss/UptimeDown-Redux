@@ -77,24 +77,28 @@ class Cpu:
             logger.warning(f"Can't read {cpuinfo_path}, bailing out.")
             # Non-fatal: other gatherers may still succeed.
             return False
-        with open(cpuinfo_path, "r") as reader:
-            cpuinfo_line = reader.readline().strip()
-            # Stop at the first blank line — that ends the cpu0 stanza.
-            while cpuinfo_line != "":
-                # Lines look like:  model name      : AMD EPYC 7571
-                # Split on the first colon only; the value may contain colons.
-                split = cpuinfo_line.split(":", 1)
-                if len(split) < 2:
-                    # Line without a colon — skip (shouldn't happen in practice).
-                    cpuinfo_line = reader.readline().strip()
-                    continue
-                split[0] = split[0].strip()
-                split[1] = split[1].strip()
-                cpuinfo_values[split[0]] = util.coerce_field(
-                    split[1], split[0],
-                    self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
-                )
+        try:
+            with open(cpuinfo_path, "r") as reader:
                 cpuinfo_line = reader.readline().strip()
+                # Stop at the first blank line — that ends the cpu0 stanza.
+                while cpuinfo_line != "":
+                    # Lines look like:  model name      : AMD EPYC 7571
+                    # Split on the first colon only; the value may contain colons.
+                    split = cpuinfo_line.split(":", 1)
+                    if len(split) < 2:
+                        # Line without a colon — skip (shouldn't happen in practice).
+                        cpuinfo_line = reader.readline().strip()
+                        continue
+                    split[0] = split[0].strip()
+                    split[1] = split[1].strip()
+                    cpuinfo_values[split[0]] = util.coerce_field(
+                        split[1], split[0],
+                        self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
+                    )
+                    cpuinfo_line = reader.readline().strip()
+        except (IOError, OSError, ValueError, TypeError) as e:
+            logger.error("linux_cpu: error reading/parsing /proc/cpuinfo: %s", e)
+            return False
         nfields = len(cpuinfo_values)
         logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
         logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
@@ -123,23 +127,30 @@ class Cpu:
             logger.error(f"Fatal: Can't open {softirq_path} for reading.")
             return False
         nirq_types = 0
-        with open(softirq_path, "r") as reader:
-            # First line is the header: "    CPU0  CPU1  CPU2 ..."
-            # Parse it to get column→CPU name mapping before reading data rows.
-            header_line = reader.readline().strip()
-            cpu_columns = [c.strip() for c in header_line.split() if c.strip()]
-            logger.debug("GetCpuSoftIrqs: header lists %d CPU columns", len(cpu_columns))
-            softirq_line = reader.readline().strip()
-            while softirq_line != "":
-                # Lines look like:  NET_RX:    12345    67890 ...
-                # Strip the trailing colon from the IRQ name before splitting.
-                irq = softirq_line.replace(":", "").split()
-                irqname = irq.pop(0)
-                for i, cpu_name in enumerate(cpu_columns):
-                    if cpu_name in cpustats_values and cpu_name != "cpu":
-                        cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
-                nirq_types += 1
+        try:
+            with open(softirq_path, "r") as reader:
+                # First line is the header: "    CPU0  CPU1  CPU2 ..."
+                # Parse it to get column→CPU name mapping before reading data rows.
+                header_line = reader.readline().strip()
+                cpu_columns = [c.strip() for c in header_line.split() if c.strip()]
+                logger.debug("GetCpuSoftIrqs: header lists %d CPU columns", len(cpu_columns))
                 softirq_line = reader.readline().strip()
+                while softirq_line != "":
+                    # Lines look like:  NET_RX:    12345    67890 ...
+                    # Strip the trailing colon from the IRQ name before splitting.
+                    irq = softirq_line.replace(":", "").split()
+                    irqname = irq.pop(0)
+                    for i, cpu_name in enumerate(cpu_columns):
+                        if cpu_name in cpustats_values and cpu_name != "cpu":
+                            try:
+                                cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
+                            except (IndexError, ValueError, TypeError):
+                                logger.warning("GetCpuSoftIrqs: could not parse softirq value for %s/%s", cpu_name, irqname)
+                    nirq_types += 1
+                    softirq_line = reader.readline().strip()
+        except (IOError, OSError) as e:
+            logger.error("linux_cpu: error reading /proc/softirqs: %s", e)
+            return False
         ncpus = sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu")
         logger.debug("GetCpuSoftIrqs: merged %d softirq types across %d CPUs",
                      nirq_types, ncpus)
@@ -173,35 +184,42 @@ class Cpu:
         if util.caniread(stat_path) is False:
             logger.error(f"Fatal: Can't open {stat_path} for reading.")
             return False
-        with open(stat_path, "r") as reader:
-            stat_line = reader.readline().strip()
-            while stat_line != "":
-                if stat_line.startswith("cpu"):
-                    split = stat_line.split()
-                    # cpu_name is "cpu" for the aggregate row, "cpuN" for each core.
-                    cpu_name = split.pop(0)
-                    cpustats_values[cpu_name] = util.dict_from_fields(split, cpustats_labels)
-                    # Softirqs are merged in after the per-CPU section is fully read.
-                    cpustats_values[cpu_name]["softirqs"] = {}
-                elif stat_line.startswith("intr"):
-                    # The "intr" line marks the end of the per-CPU section.
-                    # Pull softirq counts from /proc/softirqs now so they can
-                    # be attached to the already-parsed per-core dicts.
-                    result = self.GetCpuSoftIrqs(cpustats_values)
-                    if result is not False:
-                        cpustats_values = result
-                else:
-                    split = stat_line.split()
-                    key = split.pop(0)
-                    if key == "softirq":
-                        # "softirq" line: total followed by per-type counts.
-                        cpustats_values[key] = list(map(int, split))
-                    else:
-                        cpustats_values[key] = util.coerce_field(
-                            split[0], key,
-                            self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
-                        )
+        try:
+            with open(stat_path, "r") as reader:
                 stat_line = reader.readline().strip()
+                while stat_line != "":
+                    try:
+                        if stat_line.startswith("cpu"):
+                            split = stat_line.split()
+                            # cpu_name is "cpu" for the aggregate row, "cpuN" for each core.
+                            cpu_name = split.pop(0)
+                            cpustats_values[cpu_name] = util.dict_from_fields(split, cpustats_labels)
+                            # Softirqs are merged in after the per-CPU section is fully read.
+                            cpustats_values[cpu_name]["softirqs"] = {}
+                        elif stat_line.startswith("intr"):
+                            # The "intr" line marks the end of the per-CPU section.
+                            # Pull softirq counts from /proc/softirqs now so they can
+                            # be attached to the already-parsed per-core dicts.
+                            result = self.GetCpuSoftIrqs(cpustats_values)
+                            if result is not False:
+                                cpustats_values = result
+                        else:
+                            split = stat_line.split()
+                            key = split.pop(0)
+                            if key == "softirq":
+                                # "softirq" line: total followed by per-type counts.
+                                cpustats_values[key] = list(map(int, split))
+                            else:
+                                cpustats_values[key] = util.coerce_field(
+                                    split[0], key,
+                                    self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
+                                )
+                    except (ValueError, IndexError, TypeError) as e:
+                        logger.warning("GetCpuProcStats: error parsing line %r: %s", stat_line, e)
+                    stat_line = reader.readline().strip()
+        except (IOError, OSError) as e:
+            logger.error("linux_cpu: error reading /proc/stat: %s", e)
+            return False
 
         # Promote aggregate CPU row's tick counters to top-level schema column names
         # so Linux and AIX rows share the same keys in the cpu_stats table.
@@ -247,16 +265,20 @@ class Cpu:
         if util.caniread(loadavg_path) is False:
             logger.warning("Can't read %s", loadavg_path)
             return False
-        with open(loadavg_path, "r") as f:
-            parts = f.readline().split()
-        if len(parts) < 3:
-            logger.warning("GetLoadAvg: unexpected format in /proc/loadavg")
+        try:
+            with open(loadavg_path, "r") as f:
+                parts = f.readline().split()
+            if len(parts) < 3:
+                logger.warning("GetLoadAvg: unexpected format in /proc/loadavg")
+                return False
+            return {
+                "loadavg_1":  float(parts[0]),
+                "loadavg_5":  float(parts[1]),
+                "loadavg_15": float(parts[2]),
+            }
+        except (IOError, OSError, ValueError, TypeError) as e:
+            logger.error("linux_cpu: error reading/parsing /proc/loadavg: %s", e)
             return False
-        return {
-            "loadavg_1":  float(parts[0]),
-            "loadavg_5":  float(parts[1]),
-            "loadavg_15": float(parts[2]),
-        }
 
     def UpdateValues(self):
         """Refresh both cpuinfo_values and cpustat_values from /proc."""

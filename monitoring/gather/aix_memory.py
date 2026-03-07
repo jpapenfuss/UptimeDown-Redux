@@ -105,18 +105,22 @@ def get_memory_total(_time=None):
         logger.error("Can't load libperfstat: %s", e)
         return False
 
-    lib.perfstat_memory_total.argtypes = [
-        ctypes.c_void_p,                             # name (NULL for total)
-        ctypes.POINTER(perfstat_memory_total_t),
-        ctypes.c_int,
-        ctypes.c_int,
-    ]
-    lib.perfstat_memory_total.restype = ctypes.c_int
+    try:
+        lib.perfstat_memory_total.argtypes = [
+            ctypes.c_void_p,                             # name (NULL for total)
+            ctypes.POINTER(perfstat_memory_total_t),
+            ctypes.c_int,
+            ctypes.c_int,
+        ]
+        lib.perfstat_memory_total.restype = ctypes.c_int
 
-    buf = perfstat_memory_total_t()
-    ret = lib.perfstat_memory_total(None, ctypes.byref(buf), ctypes.sizeof(buf), 1)
-    if ret != 1:
-        logger.error("perfstat_memory_total returned %d, expected 1", ret)
+        buf = perfstat_memory_total_t()
+        ret = lib.perfstat_memory_total(None, ctypes.byref(buf), ctypes.sizeof(buf), 1)
+        if ret != 1:
+            logger.error("perfstat_memory_total returned %d, expected 1", ret)
+            return False
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
+        logger.error("aix_memory: perfstat_memory_total call failed: %s", e)
         return False
 
     p = PAGE_SIZE

@@ -144,14 +144,21 @@ class Filesystems:
         """
         logger.debug("get_filesystems_from_proc: reading %s", proc_mounts_path)
         fs = {}
-        with open(proc_mounts_path, "r") as reader:
-            mount_line = reader.readline().strip()
-            while mount_line != "":
-                mount = mount_line.split()
-                filesystem = self.process_mount(mount)
-                if filesystem:
-                    fs.update(filesystem)
+        try:
+            with open(proc_mounts_path, "r") as reader:
                 mount_line = reader.readline().strip()
+                while mount_line != "":
+                    try:
+                        mount = mount_line.split()
+                        filesystem = self.process_mount(mount)
+                        if filesystem:
+                            fs.update(filesystem)
+                    except (IndexError, OSError, RuntimeError) as e:
+                        logger.warning("get_filesystems_from_proc: error processing mount line: %s", e)
+                    mount_line = reader.readline().strip()
+        except (IOError, OSError) as e:
+            logger.error("linux_filesystems: error reading mounts file: %s", e)
+            return {}
         nmounts = len(fs)
         logger.debug("get_filesystems_from_proc: collected %d filesystems", nmounts)
         return fs

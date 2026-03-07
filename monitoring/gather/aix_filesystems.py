@@ -77,21 +77,25 @@ class AixFilesystems:
         # Parse stanzas.
         config = {}
         current_stanza = None
-        with open(etc_fs_path, "r") as f:
-            for line in f:
-                line = line.rstrip("\n")
-                stripped = line.strip()
-                if not stripped or stripped.startswith("*"):
-                    continue
-                # Stanza headers start at column 0 with no leading whitespace and end with ":".
-                # Use stripped (whitespace-removed) to detect headers, ensuring tabs/spaces are
-                # treated uniformly. Check that original line doesn't start with whitespace.
-                if stripped and not line.startswith((' ', '\t')) and stripped.endswith(":"):
-                    current_stanza = stripped.rstrip(":")
-                    config[current_stanza] = {}
-                elif current_stanza and "=" in line:
-                    key, _, val = line.partition("=")
-                    config[current_stanza][key.strip()] = val.strip()
+        try:
+            with open(etc_fs_path, "r") as f:
+                for line in f:
+                    line = line.rstrip("\n")
+                    stripped = line.strip()
+                    if not stripped or stripped.startswith("*"):
+                        continue
+                    # Stanza headers start at column 0 with no leading whitespace and end with ":".
+                    # Use stripped (whitespace-removed) to detect headers, ensuring tabs/spaces are
+                    # treated uniformly. Check that original line doesn't start with whitespace.
+                    if stripped and not line.startswith((' ', '\t')) and stripped.endswith(":"):
+                        current_stanza = stripped.rstrip(":")
+                        config[current_stanza] = {}
+                    elif current_stanza and "=" in line:
+                        key, _, val = line.partition("=")
+                        config[current_stanza][key.strip()] = val.strip()
+        except (IOError, OSError) as e:
+            logger.error("aix_filesystems: error reading /etc/filesystems: %s", e)
+            return {}
 
         logger.debug("get_filesystems: parsed %d stanzas from /etc/filesystems", len(config))
 
@@ -100,16 +104,29 @@ class AixFilesystems:
         nmounted = 0
         nunmounted = 0
         for mountpoint, attrs in config.items():
-            entry = {
-                "mountpoint": mountpoint,
-                "dev":        attrs.get("dev", ""),
-                "vfs":        attrs.get("vfs", ""),
-                "log":        attrs.get("log", ""),
-                "mount":      attrs.get("mount", ""),
-                "type":       attrs.get("type", ""),
-                "account":    attrs.get("account", ""),
-                "options":    json.dumps(util.parse_mount_options(attrs.get("options", ""))),
-            }
+            try:
+                entry = {
+                    "mountpoint": mountpoint,
+                    "dev":        attrs.get("dev", ""),
+                    "vfs":        attrs.get("vfs", ""),
+                    "log":        attrs.get("log", ""),
+                    "mount":      attrs.get("mount", ""),
+                    "type":       attrs.get("type", ""),
+                    "account":    attrs.get("account", ""),
+                    "options":    json.dumps(util.parse_mount_options(attrs.get("options", ""))),
+                }
+            except (ValueError, TypeError) as e:
+                logger.warning("aix_filesystems: error parsing options for %s: %s", mountpoint, e)
+                entry = {
+                    "mountpoint": mountpoint,
+                    "dev":        attrs.get("dev", ""),
+                    "vfs":        attrs.get("vfs", ""),
+                    "log":        attrs.get("log", ""),
+                    "mount":      attrs.get("mount", ""),
+                    "type":       attrs.get("type", ""),
+                    "account":    attrs.get("account", ""),
+                    "options":    "{}",
+                }
             try:
                 st = os.statvfs(mountpoint)
                 entry["mounted"]  = True
@@ -124,14 +141,17 @@ class AixFilesystems:
                 entry["f_flag"]    = st.f_flag
                 entry["f_namemax"] = st.f_namemax
                 if st.f_blocks > 0:
-                    entry["bytes_total"]     = st.f_frsize * st.f_blocks
-                    entry["bytes_free"]      = st.f_frsize * st.f_bfree
-                    entry["bytes_available"] = st.f_frsize * st.f_bavail
-                    percentages = util.calculate_percentages(st.f_bfree, st.f_bavail, st.f_blocks)
-                    entry.update(percentages)
-                    logger.debug("get_filesystems:   mounted  %s (%s, %s) %.1f%% used",
-                                 mountpoint, entry["dev"], entry["vfs"],
-                                 entry["pct_used"])
+                    try:
+                        entry["bytes_total"]     = st.f_frsize * st.f_blocks
+                        entry["bytes_free"]      = st.f_frsize * st.f_bfree
+                        entry["bytes_available"] = st.f_frsize * st.f_bavail
+                        percentages = util.calculate_percentages(st.f_bfree, st.f_bavail, st.f_blocks)
+                        entry.update(percentages)
+                        logger.debug("get_filesystems:   mounted  %s (%s, %s) %.1f%% used",
+                                     mountpoint, entry["dev"], entry["vfs"],
+                                     entry["pct_used"])
+                    except (RuntimeError, ValueError, TypeError) as e:
+                        logger.warning("aix_filesystems: error calculating percentages for %s: %s", mountpoint, e)
                 else:
                     logger.debug("get_filesystems:   mounted  %s (%s, %s) no block storage",
                                  mountpoint, entry["dev"], entry["vfs"])

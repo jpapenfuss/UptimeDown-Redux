@@ -114,27 +114,34 @@ class Network:
             return False
 
         interfaces = {}
-        with open(self.proc_net_dev_path, "r") as reader:
-            # Skip the two header lines — they describe column layout but are
-            # not machine-parseable; we rely on NET_DEV_KEYS ordering instead.
-            reader.readline()
-            reader.readline()
-            line = reader.readline()
-            while line:
-                line = line.strip()
-                if not line:
-                    line = reader.readline()
-                    continue
-                # Split on the first colon to separate interface name from counters.
-                # Example: "  eth0: 12345 678 0 0 0 0 0 0 98765 432 0 0 0 0 0 0"
-                colon = line.index(":")
-                iface = line[:colon].strip()
-                fields = line[colon + 1:].split()
-                entry = util.dict_from_fields(fields, NET_DEV_KEYS)
-                # Augment with metadata from /sys/class/net.
-                entry.update(_read_metadata(iface))
-                interfaces[iface] = entry
+        try:
+            with open(self.proc_net_dev_path, "r") as reader:
+                # Skip the two header lines — they describe column layout but are
+                # not machine-parseable; we rely on NET_DEV_KEYS ordering instead.
+                reader.readline()
+                reader.readline()
                 line = reader.readline()
+                while line:
+                    try:
+                        line = line.strip()
+                        if not line:
+                            line = reader.readline()
+                            continue
+                        # Split on the first colon to separate interface name from counters.
+                        # Example: "  eth0: 12345 678 0 0 0 0 0 0 98765 432 0 0 0 0 0 0"
+                        colon = line.index(":")
+                        iface = line[:colon].strip()
+                        fields = line[colon + 1:].split()
+                        entry = util.dict_from_fields(fields, NET_DEV_KEYS)
+                        # Augment with metadata from /sys/class/net.
+                        entry.update(_read_metadata(iface))
+                        interfaces[iface] = entry
+                    except (ValueError, IndexError, TypeError) as e:
+                        logger.warning("get_interfaces: error parsing interface line: %s", e)
+                    line = reader.readline()
+        except (IOError, OSError) as e:
+            logger.error("linux_network: error reading /proc/net/dev: %s", e)
+            return False
         logger.debug("get_interfaces: collected %d interfaces", len(interfaces))
         for iface, stats in interfaces.items():
             logger.debug("get_interfaces:   %s ibytes=%d obytes=%d ierrors=%d oerrors=%d "

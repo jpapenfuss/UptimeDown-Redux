@@ -233,7 +233,11 @@ def get_cpus(_time=None):
     Returns False and logs an error if the enumeration fails.
     """
     logger.debug("get_cpus: calling perfstat_cpu")
-    lib = _load_libperfstat()
+    try:
+        lib = _load_libperfstat()
+    except OSError as e:
+        logger.error("aix_cpu.get_cpus: could not load libperfstat: %s", e)
+        return False
 
     cpu_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_cpu, perfstat_cpu_t)
     if not cpu_structs:
@@ -300,7 +304,11 @@ def get_cpu_total(_time=None):
     Returns False and logs an error if the call does not return exactly 1.
     """
     logger.debug("get_cpu_total: calling perfstat_cpu_total")
-    lib = _load_libperfstat()
+    try:
+        lib = _load_libperfstat()
+    except OSError as e:
+        logger.error("aix_cpu.get_cpu_total: could not load libperfstat: %s", e)
+        return False
 
     lib.perfstat_cpu_total.argtypes = [
         ctypes.POINTER(aix_util.perfstat_id_t),

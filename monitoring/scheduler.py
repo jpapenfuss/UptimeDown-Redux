@@ -14,16 +14,23 @@ to determine which are due. This means:
     >= comparison still fires the gatherer on the next opportunity without
     permanently drifting or skipping collections.
 
+If a gatherer raises an exception, it is caught and logged; the error is
+recorded in the errors dict for reporting. Other gatherers continue running.
+
 Typical usage in a daemon loop::
 
     scheduler = GathererScheduler(gatherers, cfg.gatherer_intervals, cfg.run_interval)
     while True:
-        cache, timings = scheduler.tick()
+        cache, timings, errors = scheduler.tick()
         if scheduler.ready:
-            json_out = assemble(cache)
+            json_out = assemble(cache, errors)
         time.sleep(scheduler.BASE_TICK)
 """
 import time
+import logging
+
+logger = logging.getLogger("monitoring")
+logger.addHandler(logging.NullHandler())
 
 
 class GathererScheduler:
@@ -58,6 +65,7 @@ class GathererScheduler:
         self.base_tick = max(self.MIN_BASE_TICK, base_tick)
         self._last_collected = {}  # name -> float (unix timestamp of last run)
         self._cache = {}           # name -> dict (most recent result)
+        self._errors = {}          # name -> {error, message} (populated on gatherer failure)
 
     def _interval_for(self, name):
         """Return the effective collection interval (seconds) for a gatherer."""
@@ -71,24 +79,40 @@ class GathererScheduler:
         wake-up (sleep ran long) never causes a collection to be permanently
         skipped — it simply fires on the next tick() call.
 
+        If a gatherer raises an exception, it is caught, logged, and recorded
+        in the errors dict. Other gatherers continue running.
+
         Returns:
-            (cache, timings) tuple where:
+            (cache, timings, errors) tuple where:
                 cache   — dict mapping gatherer name to its most recent result.
                           Includes all gatherers ever collected, not just this
                           tick. Callers should check scheduler.ready before
                           using the cache if they need all gatherers present.
+                          Failed gatherers have cache[name] = None.
                 timings — dict mapping gatherer name to float seconds elapsed.
-                          Only contains gatherers that ran this tick.
+                          Only contains gatherers that ran this tick (including failed ones).
+                errors  — dict mapping gatherer name to {error, message}.
+                          Empty if no failures this tick. Errors auto-clear on
+                          the next successful collection of the same gatherer.
         """
         now = time.time()
         timings = {}
         for name, fn in self._gatherers.items():
             if now - self._last_collected.get(name, 0) >= self._interval_for(name):
                 t0 = time.time()
-                self._cache[name] = fn()
+                try:
+                    self._cache[name] = fn()
+                    self._errors.pop(name, None)  # clear prior error on recovery
+                except Exception as exc:
+                    logger.error("Gatherer %r raised %s: %s", name, type(exc).__name__, exc)
+                    self._errors[name] = {
+                        "error": type(exc).__name__,
+                        "message": str(exc),
+                    }
+                    self._cache[name] = None  # mark attempted; skip in JSON assembly
                 self._last_collected[name] = time.time()
                 timings[name] = time.time() - t0
-        return dict(self._cache), timings
+        return dict(self._cache), timings, dict(self._errors)
 
     @property
     def ready(self):
