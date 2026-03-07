@@ -73,8 +73,8 @@ class Cpu:
         logger.debug("GetCpuinfo: reading /proc/cpuinfo")
         cpuinfo_values = {}
         cpuinfo_path = "/proc/cpuinfo"
-        if util.caniread(cpuinfo_path) is False:
-            logger.warning(f"Can't read {cpuinfo_path}, bailing out.")
+        if not util.caniread(cpuinfo_path):
+            logger.warning("linux_cpu: can't read %s", cpuinfo_path)
             # Non-fatal: other gatherers may still succeed.
             return False
         try:
@@ -123,8 +123,8 @@ class Cpu:
         """
         logger.debug("GetCpuSoftIrqs: reading /proc/softirqs")
         softirq_path = "/proc/softirqs"
-        if util.caniread(softirq_path) is False:
-            logger.error(f"Fatal: Can't open {softirq_path} for reading.")
+        if not util.caniread(softirq_path):
+            logger.error("linux_cpu: can't read %s", softirq_path)
             return False
         nirq_types = 0
         try:
@@ -181,8 +181,8 @@ class Cpu:
         # Field names use _ticks suffix for consistency with AIX schema.
         cpustats_labels = ["user_ticks", "nice_ticks", "sys_ticks", "idle_ticks", "iowait_ticks", "irq_ticks", "softirq_ticks", "steal_ticks", "guest_ticks", "guest_nice_ticks"]
         stat_path = "/proc/stat"
-        if util.caniread(stat_path) is False:
-            logger.error(f"Fatal: Can't open {stat_path} for reading.")
+        if not util.caniread(stat_path):
+            logger.error("linux_cpu: can't read %s", stat_path)
             return False
         try:
             with open(stat_path, "r") as reader:
@@ -262,8 +262,8 @@ class Cpu:
         """
         logger.debug("GetLoadAvg: reading /proc/loadavg")
         loadavg_path = "/proc/loadavg"
-        if util.caniread(loadavg_path) is False:
-            logger.warning("Can't read %s", loadavg_path)
+        if not util.caniread(loadavg_path):
+            logger.warning("linux_cpu: can't read %s", loadavg_path)
             return False
         try:
             with open(loadavg_path, "r") as f:

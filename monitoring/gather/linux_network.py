@@ -109,8 +109,8 @@ class Network:
         Returns False if /proc/net/dev is unreadable.
         """
         logger.debug("get_interfaces: reading %s", self.proc_net_dev_path)
-        if util.caniread(self.proc_net_dev_path) is False:
-            logger.error("Fatal: Can't open %s for reading.", self.proc_net_dev_path)
+        if not util.caniread(self.proc_net_dev_path):
+            logger.error("linux_network: can't read %s", self.proc_net_dev_path)
             return False
 
         interfaces = {}

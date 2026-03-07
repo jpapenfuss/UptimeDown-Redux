@@ -171,10 +171,10 @@ class TestGetDisks(unittest.TestCase):
         d.get_disks()
         self.assertNotIn("size_bytes", d.blockdevices["sda"])
 
-    def test_blockdevices_unchanged_when_get_devices_returns_none(self):
+    def test_blockdevices_unchanged_when_get_devices_fails(self):
         d = Disk.__new__(Disk)
         d.blockdevices = {}
-        d.get_devices = MagicMock(return_value=None)
+        d.get_devices = MagicMock(return_value=False)
         d.get_disks()
         self.assertEqual(d.blockdevices, {})
 
