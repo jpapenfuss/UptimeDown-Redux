@@ -106,10 +106,8 @@ class Memory:
         """
         logger.debug("GetSlabinfo: reading /proc/slabinfo")
         slabs = {}
-        if (util.caniread("/proc/slabinfo")) is False:
-            logger.warning(
-                "Can't read /proc/slabinfo - I may not be root. Will not collect slab stats"
-            )
+        if not util.caniread("/proc/slabinfo"):
+            logger.warning("linux_memory: can't read /proc/slabinfo (requires root) — skipping slab stats")
             return False
         try:
             with open("/proc/slabinfo", "r") as reader:

@@ -71,7 +71,7 @@ class AixFilesystems:
         logger.debug("get_filesystems: reading /etc/filesystems")
         etc_fs_path = "/etc/filesystems"
         if not util.caniread(etc_fs_path):
-            logger.error("Can't read %s", etc_fs_path)
+            logger.error("aix_filesystems: can't read %s", etc_fs_path)
             return {}
 
         # Parse stanzas.

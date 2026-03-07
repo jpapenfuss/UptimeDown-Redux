@@ -97,8 +97,8 @@ class Disk:
         """
         logger.debug("get_devices: reading %s", self.proc_diskstats_path)
         diskstats = {}
-        if util.caniread(self.proc_diskstats_path) is False:
-            logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
+        if not util.caniread(self.proc_diskstats_path):
+            logger.error("linux_disk: can't read %s", self.proc_diskstats_path)
             return False
 
         nskipped = 0
@@ -222,8 +222,8 @@ class Disk:
         logger.debug("get_disks: starting collection")
         ts = getattr(self, '_ts', None)
         devs = self.get_devices(ts)
-        if devs is None:
-            logger.error("get_disks: get_devices() returned None, skipping")
+        if devs is False:
+            logger.error("linux_disk: get_devices() failed, skipping")
             return
         for dev in devs:
             # Build the "major:minor" string that /sys/dev/block/ uses as a key.
