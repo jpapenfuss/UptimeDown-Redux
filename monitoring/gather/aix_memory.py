@@ -117,7 +117,7 @@ def get_memory_total(_time=None):
         buf = perfstat_memory_total_t()
         ret = lib.perfstat_memory_total(None, ctypes.byref(buf), ctypes.sizeof(buf), 1)
         if ret != 1:
-            logger.error("perfstat_memory_total returned %d, expected 1", ret)
+            logger.error("aix_memory: perfstat_memory_total returned %d, expected 1", ret)
             return False
     except (OSError, AttributeError, ctypes.ArgumentError) as e:
         logger.error("aix_memory: perfstat_memory_total call failed: %s", e)
