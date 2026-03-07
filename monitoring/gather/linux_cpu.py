@@ -78,7 +78,7 @@ class Cpu:
             # Non-fatal: other gatherers may still succeed.
             return False
         with open(cpuinfo_path, "r") as reader:
-            cpuinfo_line = str(reader.readline()).strip()
+            cpuinfo_line = reader.readline().strip()
             # Stop at the first blank line — that ends the cpu0 stanza.
             while cpuinfo_line != "":
                 # Lines look like:  model name      : AMD EPYC 7571
@@ -86,7 +86,7 @@ class Cpu:
                 split = cpuinfo_line.split(":", 1)
                 if len(split) < 2:
                     # Line without a colon — skip (shouldn't happen in practice).
-                    cpuinfo_line = str(reader.readline()).strip()
+                    cpuinfo_line = reader.readline().strip()
                     continue
                 split[0] = split[0].strip()
                 split[1] = split[1].strip()
@@ -94,7 +94,7 @@ class Cpu:
                     split[1], split[0],
                     self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
                 )
-                cpuinfo_line = str(reader.readline()).strip()
+                cpuinfo_line = reader.readline().strip()
         nfields = len(cpuinfo_values)
         logger.debug("GetCpuinfo: parsed %d fields for cpu0", nfields)
         logger.debug("GetCpuinfo: model=%r MHz=%s bogomips=%s flags=%d bugs=%d",
@@ -126,10 +126,10 @@ class Cpu:
         with open(softirq_path, "r") as reader:
             # First line is the header: "    CPU0  CPU1  CPU2 ..."
             # Parse it to get column→CPU name mapping before reading data rows.
-            header_line = str(reader.readline()).strip()
+            header_line = reader.readline().strip()
             cpu_columns = [c.strip() for c in header_line.split() if c.strip()]
             logger.debug("GetCpuSoftIrqs: header lists %d CPU columns", len(cpu_columns))
-            softirq_line = str(reader.readline()).strip()
+            softirq_line = reader.readline().strip()
             while softirq_line != "":
                 # Lines look like:  NET_RX:    12345    67890 ...
                 # Strip the trailing colon from the IRQ name before splitting.
@@ -139,7 +139,7 @@ class Cpu:
                     if cpu_name in cpustats_values and cpu_name != "cpu":
                         cpustats_values[cpu_name]["softirqs"][irqname] = int(irq[i])
                 nirq_types += 1
-                softirq_line = str(reader.readline()).strip()
+                softirq_line = reader.readline().strip()
         ncpus = sum(1 for k in cpustats_values if k.startswith("cpu") and k != "cpu")
         logger.debug("GetCpuSoftIrqs: merged %d softirq types across %d CPUs",
                      nirq_types, ncpus)
@@ -174,7 +174,7 @@ class Cpu:
             logger.error(f"Fatal: Can't open {stat_path} for reading.")
             return False
         with open(stat_path, "r") as reader:
-            stat_line = str(reader.readline()).strip()
+            stat_line = reader.readline().strip()
             while stat_line != "":
                 if stat_line.startswith("cpu"):
                     split = stat_line.split()
@@ -201,7 +201,7 @@ class Cpu:
                             split[0], key,
                             self.INTEGER_STATS, self.FLOAT_STATS, self.LIST_STATS
                         )
-                stat_line = str(reader.readline()).strip()
+                stat_line = reader.readline().strip()
 
         # Promote aggregate CPU row's tick counters to top-level schema column names
         # so Linux and AIX rows share the same keys in the cpu_stats table.

@@ -70,7 +70,7 @@ class AixFilesystems:
         """
         logger.debug("get_filesystems: reading /etc/filesystems")
         etc_fs_path = "/etc/filesystems"
-        if not os.access(etc_fs_path, os.R_OK):
+        if not util.caniread(etc_fs_path):
             logger.error("Can't read %s", etc_fs_path)
             return {}
 

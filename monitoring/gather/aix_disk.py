@@ -13,24 +13,21 @@ import ctypes
 import time
 import logging
 
+try:
+    from . import aix_util
+except ImportError:
+    import aix_util  # type: ignore
+
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
+# Kept here because it is used in the struct field definitions below.
 IDENTIFIER_LENGTH = 64
 
-
-class perfstat_id_t(ctypes.Structure):
-    """perfstat_id_t — cursor used to control perfstat enumeration.
-
-    Set name to b"" (empty string) to start enumeration from the first object
-    (FIRST_DISK). After a successful call, name is updated to the last object
-    returned, enabling paginated enumeration. Pass NULL (None) for count-only
-    calls where no buffer is provided.
-    """
-    _fields_ = [
-        ("name", ctypes.c_char * IDENTIFIER_LENGTH),
-    ]
+# Aliases kept so existing test patches/imports continue to work without change.
+_load_lib      = aix_util.load_libperfstat
+_struct_to_dict = aix_util.struct_to_dict
 
 
 class perfstat_disk_total_t(ctypes.Structure):
@@ -146,29 +143,6 @@ class perfstat_disk_t(ctypes.Structure):
     ]
 
 
-def _struct_to_dict(buf, struct_class):
-    """Convert a ctypes Structure instance to a plain Python dict.
-
-    Skips any field whose name starts with '_pad' (alignment padding).
-    bytes fields (char arrays) are decoded from ASCII, with null bytes stripped.
-    """
-    result = {}
-    for field_name, _ in struct_class._fields_:
-        if field_name.startswith("_pad"):
-            continue
-        val = getattr(buf, field_name)
-        if isinstance(val, bytes):
-            result[field_name] = val.decode("ascii", errors="replace").rstrip("\x00")
-        else:
-            result[field_name] = val
-    return result
-
-
-def _load_lib():
-    """Load libperfstat from its AIX shared archive member (64-bit object)."""
-    return ctypes.CDLL("libperfstat.a(shr_64.o)")
-
-
 def get_disk_total(lib, _time=None):
     """Call perfstat_disk_total() and return aggregate disk stats as a dict.
 
@@ -188,7 +162,7 @@ def get_disk_total(lib, _time=None):
     """
     logger.debug("get_disk_total: calling perfstat_disk_total")
     lib.perfstat_disk_total.argtypes = [
-        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(aix_util.perfstat_id_t),
         ctypes.POINTER(perfstat_disk_total_t),
         ctypes.c_int,
         ctypes.c_int,
@@ -243,7 +217,7 @@ def get_disks(lib, _time=None):
     """
     logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
     lib.perfstat_disk.argtypes = [
-        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(aix_util.perfstat_id_t),
         ctypes.POINTER(perfstat_disk_t),
         ctypes.c_int,
         ctypes.c_int,
@@ -261,7 +235,7 @@ def get_disks(lib, _time=None):
     disk_buf = DiskArray()
 
     # Start enumeration from the first disk (FIRST_DISK = empty name string).
-    first = perfstat_id_t()
+    first = aix_util.perfstat_id_t()
     first.name = b""
 
     ret = lib.perfstat_disk(

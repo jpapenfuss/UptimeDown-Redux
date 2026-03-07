@@ -55,39 +55,25 @@ def _read_metadata(iface):
     metadata = {}
     sysfs_base = f"/sys/class/net/{iface}"
 
-    # Read MTU (maximum transmission unit in bytes).
-    try:
-        with open(f"{sysfs_base}/mtu", "r") as f:
-            metadata["mtu"] = int(f.read().strip())
-    except (FileNotFoundError, ValueError, OSError):
-        pass
+    mtu = util.read_sysfs_int(f"{sysfs_base}/mtu")
+    if mtu is not None:
+        metadata["mtu"] = mtu
 
-    # Read link speed in Mbps. Non-existent for virtual interfaces like lo.
-    try:
-        with open(f"{sysfs_base}/speed", "r") as f:
-            speed_val = int(f.read().strip())
-            # -1 means unknown/unavailable; omit it to avoid confusion.
-            if speed_val >= 0:
-                metadata["speed_mbps"] = speed_val
-    except (FileNotFoundError, ValueError, OSError):
-        pass
+    # speed: -1 means unknown/unavailable — omit it to avoid confusion.
+    speed_val = util.read_sysfs_int(f"{sysfs_base}/speed")
+    if speed_val is not None and speed_val >= 0:
+        metadata["speed_mbps"] = speed_val
 
-    # Read operational state (up/down/dormant/notpresent/lowerlayerdown/testing).
-    try:
-        with open(f"{sysfs_base}/operstate", "r") as f:
-            operstate = f.read().strip()
-            if operstate:
-                metadata["operstate"] = operstate
-    except (FileNotFoundError, OSError):
-        pass
+    # operstate: up/down/dormant/notpresent/lowerlayerdown/testing
+    operstate = util.read_sysfs_str(f"{sysfs_base}/operstate")
+    if operstate:
+        metadata["operstate"] = operstate
 
-    # Read interface type (ARPHRD code). Matches AIX perfstat 'type' field.
+    # type: ARPHRD code — matches AIX perfstat 'type' field.
     # Common values: 1=Ethernet, 24=loopback, 772=loopback (older kernels).
-    try:
-        with open(f"{sysfs_base}/type", "r") as f:
-            metadata["type"] = int(f.read().strip())
-    except (FileNotFoundError, ValueError, OSError):
-        pass
+    iface_type = util.read_sysfs_int(f"{sysfs_base}/type")
+    if iface_type is not None:
+        metadata["type"] = iface_type
 
     return metadata
 

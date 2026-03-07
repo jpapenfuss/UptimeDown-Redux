@@ -16,6 +16,7 @@ dict_from_fields()      — construct a dict by zipping fields with keys, coerci
 import sys
 sys.dont_write_bytecode = True
 import os
+import re
 import socket
 import urllib.request
 
@@ -27,10 +28,7 @@ def caniread(path):
     some files (e.g. /proc/slabinfo) require root and will fail silently
     without this check.
     """
-    if os.access(path, os.R_OK) is False:
-        return False
-    else:
-        return True
+    return os.access(path, os.R_OK)
 
 
 _IEC = {p + 'ib': 1024 ** e for e, p in enumerate('kmgtpe', 1)}
@@ -136,7 +134,6 @@ def to_snake_case(name):
 
     Used by /proc/meminfo and other parsers to normalize field names.
     """
-    import re
     # Insert underscore before each uppercase letter that follows a lowercase letter or digit.
     s = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', name)
     # Handle names starting with a run of uppercase letters (e.g. SReclaimable).
@@ -215,3 +212,38 @@ def dict_from_fields(fields, keys):
     Used by disk, network, and CPU parsers to convert split lines into dicts.
     """
     return dict(zip(keys, map(int, fields)))
+
+
+def read_sysfs_int(path):
+    """Read a single integer value from a sysfs file.
+
+    Opens path, strips whitespace, and casts to int.
+    Returns the int on success, or None if the file does not exist, is
+    unreadable, or its contents cannot be parsed as an integer.
+
+    Used by linux_disk and linux_network to read /sys/class/net/* and
+    /sys/dev/block/*/queue/* attributes without repetitive try/except blocks.
+    """
+    try:
+        with open(path, "r") as f:
+            return int(f.read().strip())
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+
+
+def read_sysfs_str(path):
+    """Read a single string value from a sysfs file.
+
+    Opens path, strips whitespace, and returns the result.
+    Returns None if the file does not exist, is unreadable, or its stripped
+    contents are empty.
+
+    Used by linux_disk and linux_network to read string-valued /sys attributes
+    (e.g. operstate, scheduler) without repetitive try/except blocks.
+    """
+    try:
+        with open(path, "r") as f:
+            val = f.read().strip()
+            return val if val else None
+    except (FileNotFoundError, OSError):
+        return None

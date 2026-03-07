@@ -50,7 +50,7 @@ class Memory:
         if not util.caniread(meminfo_path):
             raise RuntimeError(f"Can't open {meminfo_path} for reading.")
         with open(meminfo_path, "r") as reader:
-            meminfo_line = str(reader.readline()).strip()
+            meminfo_line = reader.readline().strip()
             while meminfo_line != "":
                 # Replace the trailing colon on the key so we can split uniformly.
                 # Example before: "MemTotal:       16384 kB"
@@ -65,7 +65,7 @@ class Memory:
                     unit = 'KiB' if line[2] == 'kB' else line[2]
                     line[1] = util.tobytes(line[1], unit)
                 meminfo_values[key] = line[1]
-                meminfo_line = str(reader.readline()).strip()
+                meminfo_line = reader.readline().strip()
         nfields = len(meminfo_values)
         logger.debug("GetMeminfo: parsed %d fields", nfields)
         logger.debug("GetMeminfo: mem_total=%d mem_free=%d mem_available=%d",
