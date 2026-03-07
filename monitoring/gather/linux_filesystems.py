@@ -145,13 +145,13 @@ class Filesystems:
         logger.debug("get_filesystems_from_proc: reading %s", proc_mounts_path)
         fs = {}
         with open(proc_mounts_path, "r") as reader:
-            mount_line = str(reader.readline()).strip()
+            mount_line = reader.readline().strip()
             while mount_line != "":
                 mount = mount_line.split()
                 filesystem = self.process_mount(mount)
                 if filesystem:
                     fs.update(filesystem)
-                mount_line = str(reader.readline()).strip()
+                mount_line = reader.readline().strip()
         nmounts = len(fs)
         logger.debug("get_filesystems_from_proc: collected %d filesystems", nmounts)
         return fs

@@ -17,23 +17,17 @@ import ctypes
 import time
 import logging
 
+try:
+    from . import aix_util
+except ImportError:
+    import aix_util  # type: ignore
+
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
+# Kept here because it is used in the struct field definitions below.
 IDENTIFIER_LENGTH = 64
-
-
-class perfstat_id_t(ctypes.Structure):
-    """perfstat_id_t — cursor used to control perfstat enumeration.
-
-    Set name to b"" (empty string) to start enumeration from the first object.
-    After a successful call, name is updated to the last object returned,
-    enabling paginated enumeration.
-    """
-    _fields_ = [
-        ("name", ctypes.c_char * IDENTIFIER_LENGTH),
-    ]
 
 
 class perfstat_netinterface_t(ctypes.Structure):
@@ -91,13 +85,13 @@ def get_interfaces(_time=None):
     """
     logger.debug("get_interfaces: calling perfstat_netinterface (count query + enumeration)")
     try:
-        lib = ctypes.CDLL("libperfstat.a(shr_64.o)")
+        lib = aix_util.load_libperfstat()
     except OSError as e:
         logger.error("Can't load libperfstat: %s", e)
         return {}
 
     lib.perfstat_netinterface.argtypes = [
-        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(aix_util.perfstat_id_t),
         ctypes.POINTER(perfstat_netinterface_t),
         ctypes.c_int,
         ctypes.c_int,
@@ -116,7 +110,7 @@ def get_interfaces(_time=None):
     IfaceArray = perfstat_netinterface_t * nifaces
     iface_buf = IfaceArray()
 
-    first = perfstat_id_t()
+    first = aix_util.perfstat_id_t()
     first.name = b""
 
     ret = lib.perfstat_netinterface(

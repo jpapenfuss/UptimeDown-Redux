@@ -20,6 +20,11 @@ import ctypes
 import time
 import logging
 
+try:
+    from . import aix_util
+except ImportError:
+    import aix_util  # type: ignore
+
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
@@ -95,7 +100,7 @@ def get_memory_total(_time=None):
     """
     logger.debug("get_memory_total: calling perfstat_memory_total")
     try:
-        lib = ctypes.CDLL("libperfstat.a(shr_64.o)")
+        lib = aix_util.load_libperfstat()
     except OSError as e:
         logger.error("Can't load libperfstat: %s", e)
         return False

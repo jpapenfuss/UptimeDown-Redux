@@ -13,23 +13,21 @@ import ctypes
 import time
 import logging
 
+try:
+    from . import aix_util
+except ImportError:
+    import aix_util  # type: ignore
+
 logger = logging.getLogger("monitoring")
 logger.addHandler(logging.NullHandler())
 
 # IDENTIFIER_LENGTH matches IDENTIFIER_LENGTH in libperfstat.h (64 bytes).
+# Kept here because it is used in the struct field definitions below.
 IDENTIFIER_LENGTH = 64
 
-
-class perfstat_id_t(ctypes.Structure):
-    """perfstat_id_t — used to identify the starting object for enumeration calls.
-
-    Pass with name="" (FIRST_CPU / FIRST_DISK etc.) to start from the beginning,
-    or with a specific name to start enumeration from that object.
-    Pass NULL (None) to query-count calls that don't enumerate.
-    """
-    _fields_ = [
-        ("name", ctypes.c_char * IDENTIFIER_LENGTH),
-    ]
+# Alias kept so existing test patches (patch("aix_cpu._load_libperfstat", ...))
+# continue to work without modification.
+_load_libperfstat = aix_util.load_libperfstat
 
 
 class perfstat_cpu_t(ctypes.Structure):
@@ -223,16 +221,6 @@ class perfstat_cpu_total_t(ctypes.Structure):
     ]
 
 
-def _load_libperfstat():
-    """Load libperfstat from its AIX shared archive member.
-
-    On AIX, shared libraries are bundled inside .a archive files. The member
-    shr_64.o is the 64-bit shared object. This must be loaded before any
-    perfstat_* function can be called.
-    """
-    return ctypes.CDLL("libperfstat.a(shr_64.o)")
-
-
 def get_cpus(_time=None):
     """Enumerate per-CPU statistics via perfstat_cpu() and return as a dict.
 
@@ -251,7 +239,7 @@ def get_cpus(_time=None):
     lib = _load_libperfstat()
 
     lib.perfstat_cpu.argtypes = [
-        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(aix_util.perfstat_id_t),
         ctypes.POINTER(perfstat_cpu_t),
         ctypes.c_int,
         ctypes.c_int,
@@ -271,7 +259,7 @@ def get_cpus(_time=None):
     cpu_buf = CpuArray()
 
     # Initialize perfstat_id_t with name="" (FIRST_CPU constant)
-    id_buf = perfstat_id_t()
+    id_buf = aix_util.perfstat_id_t()
     id_buf.name = b""
 
     # Enumerate all CPUs
@@ -350,7 +338,7 @@ def get_cpu_total(_time=None):
     lib = _load_libperfstat()
 
     lib.perfstat_cpu_total.argtypes = [
-        ctypes.POINTER(perfstat_id_t),
+        ctypes.POINTER(aix_util.perfstat_id_t),
         ctypes.POINTER(perfstat_cpu_total_t),
         ctypes.c_int,
         ctypes.c_int,

@@ -15,6 +15,7 @@ import sys
 sys.dont_write_bytecode = True
 import logging
 import os
+import re
 import time
 
 logger = logging.getLogger("monitoring")
@@ -105,19 +106,19 @@ class Disk:
             # Example line:
             #   8  0 sda 6812071 23231120 460799263 43073497 9561353 55255999 ...
             # Fields: major minor name [DISKSTAT_KEYS...]
-            diskstats_line = str(reader.readline()).strip().split()
+            diskstats_line = reader.readline().strip().split()
             while diskstats_line != []:
                 if diskstats_line[2].startswith(IGNORE_PREFIXES):
                     # Skip loop and ram devices — they inflate the device list
                     # with entries that are never interesting for monitoring.
                     logger.debug("get_devices: skipping %s (ignored prefix)", diskstats_line[2])
                     nskipped += 1
-                    diskstats_line = str(reader.readline()).strip().split()
+                    diskstats_line = reader.readline().strip().split()
                     continue
                 # Pop the device name from index 2 before zipping the counters.
                 diskname = diskstats_line.pop(2)
                 diskstats[diskname] = util.dict_from_fields(diskstats_line, DISKSTAT_KEYS)
-                diskstats_line = str(reader.readline()).strip().split()
+                diskstats_line = reader.readline().strip().split()
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
         for devname, s in diskstats.items():
             logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d "
@@ -143,29 +144,18 @@ class Disk:
         """
         result = {}
 
-        def _read_int(name):
-            try:
-                with open(os.path.join(queue_path, name), "r") as f:
-                    return int(f.read().strip())
-            except (FileNotFoundError, ValueError, OSError):
-                return None
-
         for attr in ("rotational", "physical_block_size", "logical_block_size",
                      "discard_granularity"):
-            val = _read_int(attr)
+            val = util.read_sysfs_int(os.path.join(queue_path, attr))
             if val is not None:
                 result[attr] = val
 
         # scheduler: "none [mq-deadline] bfq" — extract the bracketed token.
-        try:
-            with open(os.path.join(queue_path, "scheduler"), "r") as f:
-                sched_line = f.read().strip()
-            import re
+        sched_line = util.read_sysfs_str(os.path.join(queue_path, "scheduler"))
+        if sched_line:
             m = re.search(r"\[([^\]]+)\]", sched_line)
             if m:
                 result["scheduler"] = m.group(1)
-        except (FileNotFoundError, OSError):
-            pass
 
         return result
 
