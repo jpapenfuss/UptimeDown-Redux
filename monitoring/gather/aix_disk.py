@@ -172,7 +172,7 @@ def get_disk_total(lib, _time=None):
     buf = perfstat_disk_total_t()
     ret = lib.perfstat_disk_total(None, ctypes.byref(buf), ctypes.sizeof(buf), 1)
     if ret != 1:
-        logger.error("perfstat_disk_total returned %d, expected 1", ret)
+        logger.error("aix_disk: perfstat_disk_total returned %d, expected 1", ret)
         return False
 
     result = _struct_to_dict(buf, perfstat_disk_total_t)
@@ -212,7 +212,7 @@ def get_disks(lib, _time=None):
     logger.debug("get_disks: calling perfstat_disk (count query + enumeration)")
     disk_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_disk, perfstat_disk_t)
     if not disk_structs:
-        logger.error("perfstat_disk enumeration failed")
+        logger.error("aix_disk: perfstat_disk enumeration failed")
         return {}
 
     disks = {}

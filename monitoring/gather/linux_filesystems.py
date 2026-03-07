@@ -81,7 +81,7 @@ class Filesystems:
             logger.debug("Can read %s, using that for mounts.", proc_mounts_path)
             filesystems = self.get_filesystems_from_proc(proc_mounts_path, ts)
         elif mtab_access:
-            logger.warning("Failed through from proc, but can read %s, using that for mounts.", mtab_path)
+            logger.warning("linux_filesystems: /proc/mounts unreadable, falling back to %s", mtab_path)
             filesystems = self.get_filesystems_from_proc(mtab_path, ts)
         else:
             raise RuntimeError(f"Can't open either {proc_mounts_path} or {mtab_path} for reading.")
@@ -192,7 +192,7 @@ class Filesystems:
         try:
             fs_stats = self.explode_statvfs(os.statvfs(mount[1]))
         except OSError as e:
-            logger.warning("statvfs(%s) failed: %s — skipping", mount[1], e)
+            logger.warning("linux_filesystems: statvfs(%s) failed: %s — skipping", mount[1], e)
             return {}
         if fs_stats is None:
             # No block storage — remember this path to skip it next time.

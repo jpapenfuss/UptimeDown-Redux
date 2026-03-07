@@ -236,12 +236,12 @@ def get_cpus(_time=None):
     try:
         lib = _load_libperfstat()
     except (OSError, AttributeError, ctypes.ArgumentError) as e:
-        logger.error("aix_cpu.get_cpus: could not load libperfstat: %s", e)
+        logger.error("aix_cpu: could not load libperfstat: %s", e)
         return False
 
     cpu_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_cpu, perfstat_cpu_t)
     if not cpu_structs:
-        logger.error("perfstat_cpu enumeration failed")
+        logger.error("aix_cpu: perfstat_cpu enumeration failed")
         return False
 
     # Tick field renames: match the cross-platform cpu_stats schema so per-CPU
@@ -307,7 +307,7 @@ def get_cpu_total(_time=None):
     try:
         lib = _load_libperfstat()
     except (OSError, AttributeError, ctypes.ArgumentError) as e:
-        logger.error("aix_cpu.get_cpu_total: could not load libperfstat: %s", e)
+        logger.error("aix_cpu: could not load libperfstat: %s", e)
         return False
 
     lib.perfstat_cpu_total.argtypes = [
@@ -326,7 +326,7 @@ def get_cpu_total(_time=None):
         1,
     )
     if ret != 1:
-        logger.error(f"perfstat_cpu_total returned {ret}, expected 1")
+        logger.error("aix_cpu: perfstat_cpu_total returned %d, expected 1", ret)
         return False
 
     raw = {}

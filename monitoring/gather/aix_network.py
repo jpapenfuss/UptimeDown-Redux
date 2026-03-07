@@ -88,7 +88,7 @@ def get_interfaces(_time=None):
     try:
         iface_structs = aix_util.perfstat_enumerate(lib, lib.perfstat_netinterface, perfstat_netinterface_t)
         if not iface_structs:
-            logger.error("perfstat_netinterface enumeration failed")
+            logger.error("aix_network: perfstat_netinterface enumeration failed")
             return {}
     except (OSError, AttributeError, ctypes.ArgumentError) as e:
         logger.error("aix_network: perfstat_netinterface enumeration failed: %s", e)
