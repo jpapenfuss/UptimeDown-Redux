@@ -115,7 +115,7 @@ class AixFilesystems:
                     "account":    attrs.get("account", ""),
                     "options":    json.dumps(util.parse_mount_options(attrs.get("options", ""))),
                 }
-            except (ValueError, TypeError) as e:
+            except (ValueError, TypeError, IndexError) as e:
                 logger.warning("aix_filesystems: error parsing options for %s: %s", mountpoint, e)
                 entry = {
                     "mountpoint": mountpoint,

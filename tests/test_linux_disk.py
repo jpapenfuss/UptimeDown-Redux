@@ -83,11 +83,11 @@ class TestGetDevices(unittest.TestCase):
         # And major must be the first column (8), not shifted to second.
         self.assertEqual(result["sda"]["major"], 8)
 
-    def test_returns_none_when_unreadable(self):
+    def test_returns_false_when_unreadable(self):
         with patch("monitoring.gather.util.caniread", return_value=False):
             d = Disk.__new__(Disk)
             result = d.get_devices()
-        self.assertIsNone(result)
+        self.assertIs(result, False)
 
     def test_all_19_diskstat_keys_present(self):
         # A full 19-field line must produce all keys in DISKSTAT_KEYS.

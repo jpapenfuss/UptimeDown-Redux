@@ -93,13 +93,13 @@ class Disk:
         so older kernels with fewer fields are handled without error — the
         missing counters simply won't appear in the output dict.
 
-        Returns None if /proc/diskstats is unreadable.
+        Returns False if /proc/diskstats is unreadable.
         """
         logger.debug("get_devices: reading %s", self.proc_diskstats_path)
         diskstats = {}
         if util.caniread(self.proc_diskstats_path) is False:
             logger.error(f"Fatal: Can't open {self.proc_diskstats_path} for reading.")
-            return None
+            return False
 
         nskipped = 0
         try:
@@ -125,7 +125,7 @@ class Disk:
                     diskstats_line = reader.readline().strip().split()
         except (IOError, OSError) as e:
             logger.error("linux_disk: error reading /proc/diskstats: %s", e)
-            return None
+            return False
         logger.debug("get_devices: found %d block devices (%d skipped)", len(diskstats), nskipped)
         for devname, s in diskstats.items():
             logger.debug("get_devices:   %s (%d:%d) read_ios=%d write_ios=%d in_flight=%d "

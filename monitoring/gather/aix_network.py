@@ -81,8 +81,8 @@ def get_interfaces(_time=None):
     logger.debug("get_interfaces: calling perfstat_netinterface (count query + enumeration)")
     try:
         lib = aix_util.load_libperfstat()
-    except OSError as e:
-        logger.error("Can't load libperfstat: %s", e)
+    except (OSError, AttributeError, ctypes.ArgumentError) as e:
+        logger.error("aix_network: could not load libperfstat: %s", e)
         return {}
 
     try:

@@ -254,7 +254,7 @@ class AixDisk:
         ts = _time if _time is not None else time.time()
         try:
             lib = _load_lib()
-        except OSError as e:
+        except (OSError, AttributeError, ctypes.ArgumentError) as e:
             logger.error("aix_disk: could not load libperfstat: %s", e)
             self.disk_total = False
             self.blockdevices = False
