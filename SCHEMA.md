@@ -160,9 +160,12 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     softirq_ticks   INTEGER,    -- servicing soft IRQs
     steal_ticks     INTEGER,    -- stolen by hypervisor
     guest_ticks     INTEGER,    -- running virtual CPU
+    guest_nice_ticks INTEGER,   -- running niced virtual CPU (Linux-specific)
 
-    -- Linux: system-wide process counters from /proc/stat non-cpu lines
+    -- Both Linux and AIX: context switches
+    -- (Linux: /proc/stat 'ctxt' line; AIX: perfstat pswitch renamed to ctxt by gatherer)
     ctxt            INTEGER,    -- total context switches since boot
+    -- Linux-only process counters from /proc/stat (NULL on AIX)
     btime           INTEGER,    -- boot time (Unix timestamp)
     processes       INTEGER,    -- processes forked since boot
     procs_running   INTEGER,    -- currently runnable
@@ -174,7 +177,8 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     ncpus_high      INTEGER,    -- highest online CPU index seen
 
     -- AIX: additional system-call and I/O counters
-    pswitch         INTEGER,    -- process switches
+    -- NOTE: pswitch is renamed to ctxt by the gatherer; this column is always NULL on AIX
+    pswitch         INTEGER,    -- always NULL on AIX (value stored in ctxt above)
     syscall         INTEGER,    -- system calls
     sysread         INTEGER,    -- read system calls
     syswrite        INTEGER,    -- write system calls
@@ -190,7 +194,8 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     runocc          INTEGER,    -- run queue occupancy samples
     swpocc          INTEGER,    -- swap queue occupancy samples
 
-    -- AIX: load average (already converted to float in JSON; store as REAL)
+    -- Both Linux and AIX: load averages
+    -- (AIX: converted from FSCALE fixed-point at collection time; Linux: /proc/loadavg)
     loadavg_1       REAL,       -- 1-minute  load average
     loadavg_5       REAL,       -- 5-minute  load average
     loadavg_15      REAL,       -- 15-minute load average
@@ -231,6 +236,9 @@ to snake_case. AIX normalizes `real_total` → `mem_total`, `real_free` → `mem
 `numperm` → `mem_cached`, `pgsp_total` → `swap_total`, `pgsp_free` → `swap_free`.
 Linux-specific fields (buffers, active, dirty, etc.) are NULL on AIX. AIX-specific
 fields not in this table go in `extra_json`.
+
+Ingestion key renames required (see "Ingestion key mapping" in Notes):
+Linux: `cached` → `mem_cached`, `hugepagesize` → `huge_page_size`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS memory (
@@ -316,8 +324,11 @@ CREATE TABLE IF NOT EXISTS filesystems (
 
     mountpoint      TEXT    NOT NULL,
     mounted         INTEGER NOT NULL,   -- 1 if statvfs succeeded, 0 otherwise
+    fs_rdonly       INTEGER NOT NULL DEFAULT 0,  -- 1 if kernel has fs read-only (ST_RDONLY; f_flag & 1)
+                                                 -- may differ from 'options' on disk-error remount
 
     -- Config fields (present where source provides them)
+    -- AIX ingestion key mapping: JSON 'log' → fs_log, 'mount' → mount_auto, 'type' → fs_type
     dev             TEXT,               -- block device (e.g. /dev/sda1, /dev/hd1)
     vfs             TEXT,               -- filesystem type (ext4, xfs, jfs2, ...)
     fs_log          TEXT,               -- journal log device (AIX 'log' field)
@@ -360,7 +371,7 @@ Aggregate I/O stats across all disks. One row per collection run.
 Source: `perfstat_disk_total_t`. Linux has no equivalent — Linux disk data is
 per-device only (see `disk_devices_linux`).
 
-`rblks`/`wblks` are in **512-byte blocks** as defined by IBM's perfstat
+`read_blocks`/`write_blocks` are in **512-byte blocks** as defined by IBM's perfstat
 documentation, regardless of the physical sector size of individual disks. This
 is consistent with the Linux convention. The `bsize` field in `disk_devices_aix`
 gives each disk's actual physical block size.
@@ -375,11 +386,13 @@ CREATE TABLE IF NOT EXISTS disk_total (
     size_bytes      INTEGER,    -- total disk capacity in bytes
     free_bytes      INTEGER,    -- total free space in bytes
     xfers           INTEGER,    -- total I/O operations since boot
-    xrate           INTEGER,    -- read transfers since boot (__rxfers)
-    rblks           INTEGER,    -- 512-byte blocks read
-    wblks           INTEGER,    -- 512-byte blocks written
-    rserv           INTEGER,    -- cumulative read service time (ms)
-    wserv           INTEGER,    -- cumulative write service time (ms)
+    read_ios        INTEGER,    -- read transfers since boot (__rxfers)
+    write_ios       INTEGER,    -- write transfers since boot (derived: xfers - read_ios)
+    read_blocks     INTEGER,    -- 512-byte blocks read
+    write_blocks    INTEGER,    -- 512-byte blocks written
+    read_ticks      INTEGER,    -- cumulative read service time (ms)
+    write_ticks     INTEGER,    -- cumulative write service time (ms)
+    time            INTEGER,    -- I/O time in ms (approx. Linux total_io_ticks; semantics unconfirmed)
     min_rserv       INTEGER,
     max_rserv       INTEGER,
     min_wserv       INTEGER,
@@ -419,15 +432,17 @@ CREATE TABLE IF NOT EXISTS disk_devices_aix (
     free_bytes      INTEGER,            -- free bytes (unallocated LVM PPs)
     bsize           INTEGER,            -- bytes per block for this disk
     xfers           INTEGER,            -- total transfers (r+w)
-    xrate           INTEGER,            -- read transfers (__rxfers)
-    rblks           INTEGER,            -- 512-byte blocks read
-    wblks           INTEGER,            -- 512-byte blocks written
+    read_ios        INTEGER,            -- read transfers (__rxfers)
+    write_ios       INTEGER,            -- write transfers (derived: xfers - read_ios)
+    read_blocks     INTEGER,            -- 512-byte blocks read
+    write_blocks    INTEGER,            -- 512-byte blocks written
+    read_ticks      INTEGER,            -- cumulative read service time (ms)
+    write_ticks     INTEGER,            -- cumulative write service time (ms)
+    time            INTEGER,            -- I/O time in ms (approx. Linux total_io_ticks; semantics unconfirmed)
     qdepth          INTEGER,            -- I/O queue depth
     q_full          INTEGER,            -- queue-full events
     q_sampled       INTEGER,            -- queue depth sample count
     paths_count     INTEGER,            -- multipath path count
-    rserv           INTEGER,            -- cumulative read service time (ms)
-    wserv           INTEGER,            -- cumulative write service time (ms)
     min_rserv       INTEGER,
     max_rserv       INTEGER,
     min_wserv       INTEGER,
@@ -464,7 +479,7 @@ drive. The Linux block layer hard-codes 512-byte logical sectors for all
 `/proc/diskstats` counters — this applies to 4K Advanced Format drives, NVMe,
 and all other media. To convert to bytes: multiply by 512. To get the actual
 physical sector size, read `/sys/block/<dev>/queue/physical_block_size`
-(available from the stubbed `get_sys_stats()` path in `linux_disk.py`).
+(collected by `get_sys_stats()` in `linux_disk.py`; stored in `extra_json`).
 
 `discard_*` and `flush_*` fields are zero on kernels < 4.18 and 5.5 respectively.
 
@@ -504,7 +519,12 @@ CREATE TABLE IF NOT EXISTS disk_devices_linux (
 
     -- Flush counters (kernel >= 5.5, zero on older kernels — not NULL)
     flush_ios           INTEGER,
-    flush_ticks         INTEGER
+    flush_ticks         INTEGER,
+
+    -- sysfs enrichment from /sys/block/<dev>/ (NULL when not available or not root)
+    -- Keys: size_bytes, rotational, physical_block_size, logical_block_size,
+    --        scheduler (active I/O scheduler name), discard_granularity
+    extra_json          TEXT
 );
 
 CREATE INDEX        IF NOT EXISTS idx_disk_devices_linux_host_time
@@ -544,9 +564,12 @@ CREATE TABLE IF NOT EXISTS net_interfaces (
     opackets        INTEGER,    -- packets sent
     oerrors         INTEGER,    -- output errors
     collisions      INTEGER,    -- collisions (CSMA interfaces)
+    idrop           INTEGER,    -- input queue drops (Linux: rx dropped; AIX: renamed from if_iqdrops)
+    mtu             INTEGER,    -- maximum transmission unit (bytes)
+    speed_mbps      INTEGER,    -- link speed in Mbps (Linux: /sys/class/net/*/speed; AIX: bitrate÷1,000,000)
+    type            INTEGER,    -- interface type code (ARPHRD; 1=Ethernet, 772=loopback, 65534=TUN/TAP)
 
     -- Linux-only (NULL on AIX)
-    idrop           INTEGER,    -- rx packets dropped
     ififo           INTEGER,    -- rx FIFO buffer errors
     iframe          INTEGER,    -- rx frame alignment errors
     icompressed     INTEGER,    -- rx compressed packets
@@ -555,14 +578,11 @@ CREATE TABLE IF NOT EXISTS net_interfaces (
     ofifo           INTEGER,    -- tx FIFO buffer errors
     ocarrier        INTEGER,    -- tx carrier sense errors
     ocompressed     INTEGER,    -- tx compressed packets
+    operstate       TEXT,       -- link state (up/down/dormant/etc.; /sys/class/net/*/operstate)
 
     -- AIX-only (NULL on Linux)
-    mtu             INTEGER,    -- maximum transmission unit (bytes)
-    bitrate         INTEGER,    -- adapter link speed (bits/sec)
-    if_iqdrops      INTEGER,    -- input queue drops
     if_arpdrops     INTEGER,    -- drops due to missing ARP entry
-    description     TEXT,       -- adapter description from ODM
-    type            INTEGER     -- interface type code (1=Ethernet, etc.)
+    description     TEXT        -- adapter description from ODM
 );
 
 CREATE INDEX IF NOT EXISTS idx_net_interfaces_host_time  ON net_interfaces (host_id, collected_at);
@@ -792,9 +812,9 @@ In a distributed setup with many hosts, row count grows as O(hosts × samples ×
 | Network rx/tx bytes/sec | `net_interfaces` | LAG-diff of `ibytes`/`obytes` ÷ elapsed seconds |
 | Disk read/write IOPS | `disk_devices_linux` | LAG-diff of `read_ios`/`write_ios` ÷ elapsed seconds |
 | Disk read/write bytes/s | `disk_devices_linux` | LAG-diff of `read_sectors`/`write_sectors` × 512 ÷ elapsed seconds (always 512 regardless of physical sector size) |
-| AIX disk read/write bytes/s | `disk_devices_aix` | LAG-diff of `rblks`/`wblks` × 512 ÷ elapsed seconds |
+| AIX disk read/write bytes/s | `disk_devices_aix` | LAG-diff of `read_blocks`/`write_blocks` × 512 ÷ elapsed seconds |
 | AIX load average | `cpu_stats` | `loadavg_1` (already a float; no conversion needed) |
-| AIX disk IOPS | `disk_total` or `disk_devices_aix` | LAG-diff of `xrate`/`xfers` ÷ elapsed seconds |
+| AIX disk IOPS | `disk_total` or `disk_devices_aix` | LAG-diff of `read_ios`/`xfers` ÷ elapsed seconds |
 | AIX disk capacity used | `disk_devices_aix` | `size_bytes - free_bytes` |
 
 ---
@@ -806,9 +826,9 @@ In a distributed setup with many hosts, row count grows as O(hosts × samples ×
 `LAG()` window functions are available in SQLite 3.25.0+ (released 2018-09-15).
 Any modern OS has a sufficiently recent SQLite. Verify with `SELECT sqlite_version();`.
 
-### AIX loadavg
+### Load averages (Linux and AIX)
 
-The `loadavg_*` fields are stored as standard floats (conversion from AIX FSCALE fixed-point happens at collection time in the gatherer). No query-time conversion is needed:
+The `loadavg_*` fields are stored as standard floats. On AIX the conversion from FSCALE fixed-point happens at collection time; on Linux `/proc/loadavg` is read directly. No query-time conversion is needed on either platform:
 
 ```sql
 SELECT loadavg_1 AS load_1min
@@ -817,6 +837,72 @@ WHERE host_id = :host_id
 ORDER BY collected_at DESC
 LIMIT 1;
 ```
+
+### Ingestion key mapping
+
+Several gatherers emit JSON keys that differ from schema column names. The ingestion
+layer must apply these renames before inserting rows.
+
+**`cpu_info` table — Linux `/proc/cpuinfo` keys have spaces; schema uses snake_case:**
+
+| JSON key (raw from gatherer) | Schema column |
+|------------------------------|---------------|
+| `cpu family`                 | `cpu_family`  |
+| `model name`                 | `model_name`  |
+| `cpu MHz`                    | `cpu_mhz`     |
+
+(All other `/proc/cpuinfo` keys already match their schema column names.)
+
+**`memory` table — Linux `/proc/meminfo` key renames:**
+
+| JSON key (gatherer output)   | Schema column   |
+|------------------------------|-----------------|
+| `cached`                     | `mem_cached`    |
+| `hugepagesize`               | `huge_page_size`|
+
+`to_snake_case("Hugepagesize")` produces `hugepagesize` (only the leading `H` is
+capitalised). The schema column is `huge_page_size`. `Cached` becomes `cached`
+after snake_case; the schema column is `mem_cached` to avoid ambiguity with the
+unrelated `cached` field on AIX.
+
+**`disk_devices_linux` table — sysfs enrichment fields into `extra_json`:**
+
+The gatherer emits sysfs fields flat alongside diskstat counters. The ingestion
+layer must bundle them into a JSON object for the `extra_json` column:
+
+| JSON key (flat in gatherer output) | Destination  |
+|------------------------------------|--------------|
+| `size_bytes`                       | `extra_json` |
+| `rotational`                       | `extra_json` |
+| `physical_block_size`              | `extra_json` |
+| `logical_block_size`               | `extra_json` |
+| `scheduler`                        | `extra_json` |
+| `discard_granularity`              | `extra_json` |
+
+These fields are absent when `/sys/dev/block/` is unreadable. The remaining
+fields (`major` through `flush_ticks`) map directly to their schema columns.
+
+**`filesystems` table — derived field:**
+
+| Source                      | Derivation   | Schema column |
+|-----------------------------|--------------|---------------|
+| `f_flag` (from `statvfs()`) | `f_flag & 1` | `fs_rdonly`   |
+
+`f_flag` is not stored directly. `fs_rdonly` is 1 when `ST_RDONLY` is set by the
+kernel; this can differ from the `options` string when the kernel silently
+remounts a filesystem read-only after a disk write error. Available on both
+Linux and AIX (both use `os.statvfs()`).
+
+**`filesystems` table — AIX `/etc/filesystems` key renames:**
+
+| JSON key (gatherer output)   | Schema column  |
+|------------------------------|----------------|
+| `log`                        | `fs_log`       |
+| `mount`                      | `mount_auto`   |
+| `type`                       | `fs_type`      |
+
+(`dev`, `vfs`, `account`, `options` are emitted with the correct names and need
+no rename.)
 
 ### Counter wraparound
 

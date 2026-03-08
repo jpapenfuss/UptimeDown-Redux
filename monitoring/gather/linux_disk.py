@@ -1,11 +1,10 @@
-# Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters.
+# Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters
+# and enriches each entry with sysfs data (size, rotational, block sizes,
+# scheduler) from /sys/dev/block/.
 #
 # Exposes a Disk class. After instantiation:
-#   blockdevices — dict keyed by device name, each entry containing an
-#                  "iostats" sub-dict of /proc/diskstats counters.
-#
-# NOTE: get_sys_stats() and get_queue() are stubs; /sys/block enrichment is
-# not yet implemented.
+#   blockdevices — flat dict keyed by device name containing /proc/diskstats
+#                  counters merged with /sys/dev/block/ sysfs attributes.
 #
 # References:
 #   https://www.kernel.org/doc/Documentation/ABI/testing/procfs-diskstats
@@ -60,12 +59,13 @@ class Disk:
     """Linux disk gatherer. Reads /proc/diskstats for per-device I/O counters.
 
     After instantiation:
-        blockdevices — dict keyed by device name (e.g. "sda", "nvme0n1"), each
-                       entry containing an "iostats" sub-dict of integer counters
-                       (DISKSTAT_KEYS).
+        blockdevices — flat dict keyed by device name (e.g. "sda", "nvme0n1"),
+                       each entry containing integer counters from DISKSTAT_KEYS
+                       merged with sysfs attributes (size_bytes, rotational,
+                       physical_block_size, logical_block_size, discard_granularity,
+                       scheduler) where available.
 
     Devices matching IGNORE_PREFIXES (loop*, ram*) are silently skipped.
-    /sys/block enrichment (get_sys_stats, get_queue) is stubbed out for future use.
     """
 
     sys_block_path = "/sys/block/"
@@ -78,7 +78,7 @@ class Disk:
         """Parse /proc/diskstats and return a dict of per-device I/O counters.
 
         Each entry is keyed by device name (e.g. "sda", "nvme0n1") and contains
-        an "iostats" sub-dict of integer counters mapped by DISKSTAT_KEYS.
+        a flat dict of integer counters mapped by DISKSTAT_KEYS.
         Devices whose names start with any prefix in
         IGNORE_PREFIXES are skipped.
 
@@ -215,7 +215,7 @@ class Disk:
 
         Calls get_devices() for /proc/diskstats counters, then for each device
         calls get_sys_stats() with its "major:minor" string to enrich the entry
-        with /sys/dev/block/ data (currently a no-op stub — see get_sys_stats).
+        with /sys/dev/block/ data (size_bytes, rotational, block sizes, scheduler).
         Sets self.blockdevices to the resulting dict.
         """
         logger.debug("get_disks: starting collection")

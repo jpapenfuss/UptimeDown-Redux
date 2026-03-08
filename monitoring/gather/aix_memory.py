@@ -4,10 +4,10 @@
 # Exposes an AixMemory class. After instantiation:
 #   stats — dict with a 'memory' sub-dict, mirroring the shape of the Linux
 #            Memory class so __main__.py can treat them interchangeably.
-#            The 'slabs' key is always None (no AIX equivalent).
+#            The 'slabs' key is always False (no AIX equivalent).
 #
 # Output keys in stats['memory'] are normalized to match the schema:
-#   Shared with Linux: mem_total, mem_free, cached, swap_total, swap_free
+#   Shared with Linux: mem_total, mem_free, mem_available, cached, swap_total, swap_free
 #   AIX-only: real_pinned, real_inuse, real_system, real_user, real_process,
 #             virt_total, virt_active, pgsp_rsvd,
 #             pgbad, pgexct, pgins, pgouts, pgspins, pgspouts,
@@ -80,11 +80,12 @@ def get_memory_total(_time=None):
     cumulative since boot and rates should be computed at query time.
 
     Normalized keys shared with the Linux memory gatherer:
-        mem_total    — total RAM in bytes        (real_total * PAGE_SIZE)
-        mem_free     — free RAM in bytes         (real_free  * PAGE_SIZE)
-        cached       — file cache in bytes       (numperm    * PAGE_SIZE)
-        swap_total   — total paging space bytes  (pgsp_total * PAGE_SIZE)
-        swap_free    — free paging space bytes   (pgsp_free  * PAGE_SIZE)
+        mem_total     — total RAM in bytes        (real_total * PAGE_SIZE)
+        mem_free      — free RAM in bytes         (real_free  * PAGE_SIZE)
+        mem_available — estimated available RAM   ((real_free + numperm) * PAGE_SIZE)
+        cached        — file cache in bytes       (numperm    * PAGE_SIZE)
+        swap_total    — total paging space bytes  (pgsp_total * PAGE_SIZE)
+        swap_free     — free paging space bytes   (pgsp_free  * PAGE_SIZE)
 
     AIX-only page fields (also converted to bytes):
         real_pinned  — RAM locked in memory (cannot be paged out)
@@ -128,6 +129,9 @@ def get_memory_total(_time=None):
         # --- Normalized keys (shared with Linux) ---
         "mem_total": buf.real_total * p,
         "mem_free": buf.real_free * p,
+        # Approximation of Linux MemAvailable: free RAM + reclaimable file cache.
+        # AIX has no single equivalent field; (real_free + numperm) is the best estimate.
+        "mem_available": (buf.real_free + buf.numperm) * p,
         "cached": buf.numperm * p,  # file cache; matches Linux 'Cached' → 'cached'
         "swap_total": buf.pgsp_total * p,
         "swap_free": buf.pgsp_free * p,
@@ -174,6 +178,7 @@ class AixMemory:
         stats["memory"] — normalized memory stats dict from
                           perfstat_memory_total_t, with page values converted
                           to bytes and keys shared with Linux where applicable.
+                          Includes mem_available (approximated as free + cached).
         stats["slabs"]  — always False (no AIX equivalent of /proc/slabinfo).
     """
 

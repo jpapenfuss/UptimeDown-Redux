@@ -69,8 +69,8 @@ def _read_metadata(iface):
     if operstate:
         metadata["operstate"] = operstate
 
-    # type: ARPHRD code — matches AIX perfstat 'type' field.
-    # Common values: 1=Ethernet, 24=loopback, 772=loopback (older kernels).
+    # type: ARPHRD code from linux/if_arp.h.
+    # Common values: 1=ARPHRD_ETHER, 772=ARPHRD_LOOPBACK, 65534=ARPHRD_NONE (TUN/TAP).
     iface_type = util.read_sysfs_int(f"{sysfs_base}/type")
     if iface_type is not None:
         metadata["type"] = iface_type

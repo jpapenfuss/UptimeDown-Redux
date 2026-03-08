@@ -56,7 +56,7 @@ class TestGetMemoryTotal(unittest.TestCase):
         with patch("ctypes.CDLL", return_value=self._make_lib(1)), \
              patch("time.time", return_value=1.0):
             result = get_memory_total()
-        for key in ("mem_total", "mem_free", "cached", "swap_total", "swap_free"):
+        for key in ("mem_total", "mem_free", "mem_available", "cached", "swap_total", "swap_free"):
             self.assertIn(key, result)
 
     def test_aix_specific_keys_present(self):
@@ -93,6 +93,18 @@ class TestGetMemoryTotal(unittest.TestCase):
         self.assertEqual(result["cached"],      10 * PAGE_SIZE)
         self.assertEqual(result["swap_total"],  20 * PAGE_SIZE)
         self.assertEqual(result["swap_free"],   15 * PAGE_SIZE)
+
+    def test_mem_available_is_free_plus_cache(self):
+        lib = MagicMock()
+        def fill(name_p, buf_p, size, count):
+            buf_p._obj.real_free = 40
+            buf_p._obj.numperm   = 10
+            return 1
+        lib.perfstat_memory_total.side_effect = fill
+        with patch("ctypes.CDLL", return_value=lib), \
+             patch("time.time", return_value=1.0):
+            result = get_memory_total()
+        self.assertEqual(result["mem_available"], (40 + 10) * PAGE_SIZE)
 
     def test_counters_not_multiplied(self):
         lib = MagicMock()
