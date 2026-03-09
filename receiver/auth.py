@@ -26,14 +26,15 @@ def load_tokens(path: str) -> set[str]:
     tokens = set()
     with open(path, "r") as f:
         for line_no, line in enumerate(f, 1):
-            line = line.rstrip("\n\r")
+            # Strip leading and trailing whitespace
+            line = line.strip()
 
             # Skip blank lines
-            if not line or not line.strip():
+            if not line:
                 continue
 
             # Skip comments
-            if line.strip().startswith("#"):
+            if line.startswith("#"):
                 continue
 
             # Check minimum length
@@ -70,12 +71,15 @@ def check_auth(headers, valid_tokens: set) -> bool:
     if not auth_header:
         return False
 
-    # Parse "Bearer <token>" format
+    # Parse "Bearer <token>" format (scheme is case-insensitive per RFC 7235)
     parts = auth_header.split(" ", 1)
-    if len(parts) != 2 or parts[0] != "Bearer":
+    if len(parts) != 2 or parts[0].lower() != "bearer":
         return False
 
     token = parts[1]
+    if not token:
+        # Reject empty token (e.g., "Bearer " with no token)
+        return False
 
     # Compare against ALL tokens using constant-time comparison
     # Do NOT short-circuit on first match

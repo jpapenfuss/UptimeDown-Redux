@@ -56,6 +56,23 @@ class TestLoadTokens(unittest.TestCase):
         finally:
             os.unlink(temp_path)
 
+    def test_02b_load_tokens_strips_leading_whitespace(self):
+        """Test: load_tokens strips leading/trailing whitespace from tokens."""
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
+            f.write("  " + "a" * 32 + "\n")  # leading spaces
+            f.write("b" * 40 + "  \n")  # trailing spaces
+            f.write("\t" + "c" * 50 + "\n")  # leading tab
+            temp_path = f.name
+
+        try:
+            tokens = load_tokens(temp_path)
+            self.assertEqual(len(tokens), 3)
+            self.assertIn("a" * 32, tokens)  # without leading spaces
+            self.assertIn("b" * 40, tokens)  # without trailing spaces
+            self.assertIn("c" * 50, tokens)  # without leading tab
+        finally:
+            os.unlink(temp_path)
+
     def test_03_load_tokens_rejects_short_tokens(self):
         """Test: load_tokens with short token (< 32 chars) is skipped."""
         with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
@@ -149,6 +166,42 @@ class TestCheckAuth(unittest.TestCase):
             def get(self, key, default=None):
                 if key == "Authorization":
                     return f"Bearer  {'a' * 32}"  # two spaces
+                return default
+
+        headers = MockHeaders()
+        result = check_auth(headers, self.valid_tokens)
+        self.assertFalse(result)
+
+    def test_10b_check_auth_lowercase_bearer(self):
+        """Test: check_auth with lowercase 'bearer' scheme returns True (case-insensitive)."""
+        class MockHeaders:
+            def get(self, key, default=None):
+                if key == "Authorization":
+                    return f"bearer {'a' * 32}"  # lowercase
+                return default
+
+        headers = MockHeaders()
+        result = check_auth(headers, self.valid_tokens)
+        self.assertTrue(result)
+
+    def test_10c_check_auth_uppercase_bearer(self):
+        """Test: check_auth with uppercase 'BEARER' scheme returns True (case-insensitive)."""
+        class MockHeaders:
+            def get(self, key, default=None):
+                if key == "Authorization":
+                    return f"BEARER {'a' * 32}"  # uppercase
+                return default
+
+        headers = MockHeaders()
+        result = check_auth(headers, self.valid_tokens)
+        self.assertTrue(result)
+
+    def test_10d_check_auth_bearer_with_trailing_space(self):
+        """Test: check_auth with 'Bearer ' (trailing space, no token) returns False."""
+        class MockHeaders:
+            def get(self, key, default=None):
+                if key == "Authorization":
+                    return "Bearer "  # no token after space
                 return default
 
         headers = MockHeaders()
