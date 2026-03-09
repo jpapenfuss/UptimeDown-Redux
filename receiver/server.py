@@ -4,11 +4,44 @@ import json
 import time
 import logging
 import os
+import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+from .auth import load_tokens, check_auth
 
 MAX_BODY_BYTES = 10 * 1024 * 1024
 
 logger = logging.getLogger("receiver")
+
+# Global set of valid tokens (loaded at startup)
+_VALID_TOKENS = set()
+
+
+def initialize_tokens():
+    """
+    Load authentication tokens from RECEIVER_TOKENS_FILE env var.
+
+    Raises:
+        SystemExit: If env var not set, file not found, or no valid tokens loaded.
+    """
+    global _VALID_TOKENS
+
+    tokens_file = os.environ.get("RECEIVER_TOKENS_FILE")
+    if not tokens_file:
+        logger.error("RECEIVER_TOKENS_FILE environment variable not set")
+        sys.exit(1)
+
+    try:
+        _VALID_TOKENS = load_tokens(tokens_file)
+    except FileNotFoundError:
+        logger.error("Token file not found: %s", tokens_file)
+        sys.exit(1)
+
+    if not _VALID_TOKENS:
+        logger.error("No valid tokens loaded from %s", tokens_file)
+        sys.exit(1)
+
+    logger.info("Loaded %d authentication tokens", len(_VALID_TOKENS))
 
 
 class IngestHandler(BaseHTTPRequestHandler):
@@ -18,12 +51,22 @@ class IngestHandler(BaseHTTPRequestHandler):
         """Override to use Python logging instead of stderr."""
         logger.info("%s - %s", self.client_address[0], format % args)
 
-    def _send_json(self, status_code, body_dict):
-        """Send a JSON response with proper headers."""
+    def _send_json(self, status_code, body_dict, extra_headers=None):
+        """
+        Send a JSON response with proper headers.
+
+        Args:
+            status_code: HTTP status code
+            body_dict: dict to send as JSON
+            extra_headers: optional dict of additional headers to send
+        """
         payload = json.dumps(body_dict).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
+        if extra_headers:
+            for key, value in extra_headers.items():
+                self.send_header(key, value)
         self.end_headers()
         self.wfile.write(payload)
 
@@ -99,6 +142,24 @@ class IngestHandler(BaseHTTPRequestHandler):
             return
 
         # route == "ingest"
+        # Check authentication
+        if not check_auth(self.headers, _VALID_TOKENS):
+            self._send_json(
+                401,
+                {"error": "unauthorized"},
+                extra_headers={"WWW-Authenticate": "Bearer"},
+            )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "%s %s %s 401 Content-Length=%s elapsed=%dms",
+                remote_ip,
+                self.command,
+                self.path,
+                self.headers.get("Content-Length", "0"),
+                elapsed_ms,
+            )
+            return
+
         # Check Content-Type
         content_type = self.headers.get("Content-Type", "")
         if content_type != "application/json":
@@ -268,6 +329,10 @@ class IngestHandler(BaseHTTPRequestHandler):
 
 def main():
     """Start the HTTP receiver server."""
+    # Load authentication tokens
+    initialize_tokens()
+
+    # Start server
     port = int(os.environ.get("RECEIVER_PORT", "8443"))
     server = HTTPServer(("0.0.0.0", port), IngestHandler)
     logger.info("Starting receiver on port %d", port)

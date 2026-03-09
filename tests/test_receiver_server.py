@@ -2,10 +2,14 @@
 
 import json
 import http.client
+import os
+import tempfile
 import threading
 import time
 import unittest
-from receiver.server import IngestHandler, HTTPServer
+from http.server import HTTPServer
+
+from receiver.server import IngestHandler
 
 
 TEST_PORT = 18443
@@ -16,7 +20,24 @@ class TestReceiverServer(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """Start the server in a background thread."""
+        """Start the server in a background thread with authentication tokens."""
+        # Create temp token file
+        cls.token_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".txt"
+        )
+        cls.valid_token = "x" * 50
+        cls.token_file.write(f"{cls.valid_token}\n")
+        cls.token_file.close()
+
+        # Set environment variable
+        os.environ["RECEIVER_TOKENS_FILE"] = cls.token_file.name
+
+        # Initialize tokens (loads from env var)
+        from receiver.server import initialize_tokens
+
+        initialize_tokens()
+
+        # Start server
         cls.server = HTTPServer(("127.0.0.1", TEST_PORT), IngestHandler)
         cls.server_thread = threading.Thread(target=cls.server.serve_forever)
         cls.server_thread.daemon = True
@@ -25,18 +46,30 @@ class TestReceiverServer(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        """Shut down the server."""
+        """Shut down the server and clean up."""
         cls.server.shutdown()
         cls.server_thread.join(timeout=2)
+        os.unlink(cls.token_file.name)
+        del os.environ["RECEIVER_TOKENS_FILE"]
 
-    def _raw_request(self, method, path, body=None, headers=None):
+    def _raw_request(self, method, path, body=None, headers=None, auth_token=None):
         """
         Low-level HTTP request for testing edge cases.
         Returns (status_code, body_dict_or_None).
+
+        Args:
+            method: HTTP method
+            path: Request path
+            body: Request body (bytes)
+            headers: Optional dict of headers
+            auth_token: Optional Bearer token to add
         """
         conn = http.client.HTTPConnection("127.0.0.1", TEST_PORT)
         try:
-            conn.request(method, path, body=body, headers=headers or {})
+            req_headers = headers or {}
+            if auth_token:
+                req_headers = {**req_headers, "Authorization": f"Bearer {auth_token}"}
+            conn.request(method, path, body=body, headers=req_headers)
             resp = conn.getresponse()
             status = resp.status
             resp_body = resp.read()
@@ -57,6 +90,7 @@ class TestReceiverServer(unittest.TestCase):
             headers={
                 "Content-Type": "application/json",
             },
+            auth_token=self.valid_token,
         )
         self.assertEqual(status, 202)
         self.assertIsNotNone(body)
@@ -72,6 +106,7 @@ class TestReceiverServer(unittest.TestCase):
             headers={
                 "Content-Type": "application/json",
             },
+            auth_token=self.valid_token,
         )
         self.assertEqual(status, 400)
         self.assertIsNotNone(body)
@@ -87,6 +122,7 @@ class TestReceiverServer(unittest.TestCase):
                 "Content-Type": "application/json",
                 "Content-Length": "0",
             },
+            auth_token=self.valid_token,
         )
         self.assertEqual(status, 400)
         self.assertIsNotNone(body)
@@ -148,6 +184,7 @@ class TestReceiverServer(unittest.TestCase):
             headers={
                 "Content-Type": "text/plain",
             },
+            auth_token=self.valid_token,
         )
         self.assertEqual(status, 415)
         self.assertIsNotNone(body)
@@ -163,6 +200,7 @@ class TestReceiverServer(unittest.TestCase):
                 "Content-Type": "application/json",
                 "Content-Length": "999999999",
             },
+            auth_token=self.valid_token,
         )
         self.assertEqual(status, 413)
         self.assertIsNotNone(body)
@@ -177,6 +215,7 @@ class TestReceiverServer(unittest.TestCase):
             # Send raw request without Content-Length
             conn.putrequest("POST", "/ingest")
             conn.putheader("Content-Type", "application/json")
+            conn.putheader("Authorization", f"Bearer {self.valid_token}")
             conn.endheaders()
 
             resp = conn.getresponse()
