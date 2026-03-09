@@ -52,6 +52,15 @@ class TestReceiverServer(unittest.TestCase):
         os.unlink(cls.token_file.name)
         del os.environ["RECEIVER_TOKENS_FILE"]
 
+    def _valid_payload(self):
+        """Generate a minimal valid payload for testing."""
+        return json.dumps({
+            "system_id": "test-system",
+            "collected_at": 1700000000.0,
+            "collection_errors": {},
+            "cloud": False,
+        }).encode("utf-8")
+
     def _raw_request(self, method, path, body=None, headers=None, auth_token=None):
         """
         Low-level HTTP request for testing edge cases.
@@ -86,7 +95,7 @@ class TestReceiverServer(unittest.TestCase):
         status, body = self._raw_request(
             "POST",
             "/ingest",
-            body=b'{"system_id": "test"}',
+            body=self._valid_payload(),
             headers={
                 "Content-Type": "application/json",
             },
@@ -180,7 +189,7 @@ class TestReceiverServer(unittest.TestCase):
         status, body = self._raw_request(
             "POST",
             "/ingest",
-            body=b'{"system_id": "test"}',
+            body=self._valid_payload(),
             headers={
                 "Content-Type": "text/plain",
             },
@@ -195,7 +204,7 @@ class TestReceiverServer(unittest.TestCase):
         status, body = self._raw_request(
             "POST",
             "/ingest",
-            body=b"{}",
+            body=self._valid_payload(),
             headers={
                 "Content-Type": "application/json",
                 "Content-Length": "999999999",

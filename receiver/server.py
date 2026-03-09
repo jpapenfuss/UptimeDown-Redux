@@ -8,6 +8,7 @@ import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from .auth import load_tokens, check_auth
+from .validate import validate_payload
 
 MAX_BODY_BYTES = 10 * 1024 * 1024
 
@@ -237,12 +238,45 @@ class IngestHandler(BaseHTTPRequestHandler):
 
         # Parse JSON
         try:
-            json.loads(body_bytes.decode("utf-8"))
+            data = json.loads(body_bytes.decode("utf-8"))
         except (json.JSONDecodeError, UnicodeDecodeError):
             self._send_json(400, {"error": "invalid JSON"})
             elapsed_ms = int((time.monotonic() - start) * 1000)
             logger.info(
                 "%s %s %s 400 Content-Length=%d elapsed=%dms",
+                remote_ip,
+                self.command,
+                self.path,
+                content_length,
+                elapsed_ms,
+            )
+            return
+
+        # Validate payload structure
+        if not isinstance(data, dict):
+            self._send_json(400, {"error": "payload must be a JSON object"})
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "%s %s %s 400 Content-Length=%d elapsed=%dms",
+                remote_ip,
+                self.command,
+                self.path,
+                content_length,
+                elapsed_ms,
+            )
+            return
+
+        validation_errors = validate_payload(data)
+        if validation_errors:
+            # Limit details to first 20 errors to prevent response size explosion
+            error_details = validation_errors[:20]
+            self._send_json(
+                422,
+                {"error": "validation failed", "details": error_details},
+            )
+            elapsed_ms = int((time.monotonic() - start) * 1000)
+            logger.info(
+                "%s %s %s 422 Content-Length=%d elapsed=%dms",
                 remote_ip,
                 self.command,
                 self.path,
