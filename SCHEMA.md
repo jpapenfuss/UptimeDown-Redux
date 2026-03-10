@@ -328,11 +328,13 @@ CREATE TABLE IF NOT EXISTS filesystems (
 
     -- Space stats (NULL when mounted = 0)
     -- Byte counts derived from statvfs f_frsize (fundamental block size) × block counts.
-    -- pct_free/pct_available/pct_reserved are omitted; derivable from bytes_* at query time.
     bytes_total     INTEGER,            -- f_frsize × f_blocks
     bytes_free      INTEGER,            -- f_frsize × f_bfree
     bytes_available INTEGER,            -- f_frsize × f_bavail (excludes root reserve)
     pct_used        REAL,               -- (1 - f_bfree/f_blocks) × 100
+    pct_available   REAL,               -- (f_bavail/f_blocks) × 100
+    pct_free        REAL,               -- (f_bfree/f_blocks) × 100
+    pct_reserved    REAL,               -- ((f_bfree - f_bavail)/f_blocks) × 100
 
     -- Inode stats (NULL when not mounted)
     f_files         INTEGER,            -- total inodes

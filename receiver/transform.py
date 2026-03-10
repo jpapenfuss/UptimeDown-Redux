@@ -51,7 +51,7 @@ _SLAB_COLUMNS = frozenset({
 _FS_DIRECT_COLS = frozenset({
     'mountpoint', 'dev', 'vfs', 'options',
     'bytes_total', 'bytes_free', 'bytes_available',
-    'pct_used',
+    'pct_used', 'pct_available', 'pct_free', 'pct_reserved',
     'f_files', 'f_ffree', 'f_favail',
     # AIX-renamed columns
     'fs_log', 'mount_auto', 'fs_type',
