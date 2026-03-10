@@ -334,7 +334,6 @@ CREATE TABLE IF NOT EXISTS filesystems (
     fs_log          TEXT,               -- journal log device (AIX 'log' field)
     mount_auto      TEXT,               -- mount=automatic/true/false (/etc/filesystems)
     fs_type         TEXT,               -- WPAR name or class (AIX 'type' field)
-    account         TEXT,               -- accounting flag
     options         TEXT,               -- mount options string
 
     -- Space stats (NULL when mounted = 0 or f_blocks = 0)
@@ -901,8 +900,9 @@ Linux and AIX (both use `os.statvfs()`).
 | `mount`                      | `mount_auto`   |
 | `type`                       | `fs_type`      |
 
-(`dev`, `vfs`, `account`, `options` are emitted with the correct names and need
-no rename.)
+(`dev`, `vfs`, `options` are emitted with the correct names and need no rename.
+`account` is collected by the gatherer but dropped at ingestion — it is an AIX
+disk-quota accounting toggle with no Linux equivalent and no alerting value.)
 
 ### Counter wraparound
 
