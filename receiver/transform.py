@@ -6,7 +6,6 @@ and returns row-dicts with column names matching SCHEMA.md.
 """
 
 import json
-import re
 
 
 # Schema column allowlists
@@ -16,17 +15,16 @@ _CPU_STATS_COLUMNS = frozenset({
     'nice_ticks', 'irq_ticks', 'softirq_ticks', 'steal_ticks',
     'guest_ticks', 'guest_nice_ticks',
     'ctxt', 'btime', 'processes', 'procs_running', 'procs_blocked',
-    'ncpus', 'ncpus_cfg', 'ncpus_high', 'pswitch',
+    'ncpus', 'ncpus_cfg',
     'syscall', 'sysread', 'syswrite', 'sysfork', 'sysexec',
-    'readch', 'writech', 'devintrs', 'softintrs', 'lbolt',
+    'readch', 'writech', 'devintrs', 'softintrs',
     'runque', 'swpque', 'runocc', 'swpocc',
     'loadavg_1', 'loadavg_5', 'loadavg_15',
     'idle_donated_purr', 'idle_donated_spurr',
     'busy_donated_purr', 'busy_donated_spurr',
     'idle_stolen_purr', 'idle_stolen_spurr',
     'busy_stolen_purr', 'busy_stolen_spurr',
-    'puser_spurr', 'psys_spurr', 'pidle_spurr', 'pwait_spurr', 'spurrflag',
-    'hpi', 'hpit', 'version',
+    'puser_spurr', 'psys_spurr', 'pidle_spurr', 'pwait_spurr',
 })
 
 _CPU_INFO_COLUMNS = frozenset({
@@ -53,8 +51,7 @@ _SLAB_COLUMNS = frozenset({
 _FS_DIRECT_COLS = frozenset({
     'mountpoint', 'dev', 'vfs', 'options',
     'bytes_total', 'bytes_free', 'bytes_available',
-    'pct_used', 'pct_available', 'pct_free', 'pct_reserved',
-    'f_bsize', 'f_frsize', 'f_blocks', 'f_bfree', 'f_bavail',
+    'pct_used',
     'f_files', 'f_ffree', 'f_favail',
     # AIX-renamed columns
     'fs_log', 'mount_auto', 'fs_type',
@@ -85,7 +82,7 @@ _AIX_DISK_COLUMNS = frozenset({
     'min_rserv', 'max_rserv', 'min_wserv', 'max_wserv',
     'rtimeout', 'wtimeout', 'rfailed', 'wfailed',
     'wq_depth', 'wq_sampled', 'wq_time', 'wq_min_time', 'wq_max_time',
-    'wpar_id', 'dk_type', 'version',
+    'wpar_id', 'dk_type',
 })
 
 _AIX_DISK_TOTAL_COLUMNS = frozenset({
@@ -94,15 +91,14 @@ _AIX_DISK_TOTAL_COLUMNS = frozenset({
     'read_ticks', 'write_ticks', 'time',
     'min_rserv', 'max_rserv', 'rtimeout', 'rfailed',
     'min_wserv', 'max_wserv', 'wtimeout', 'wfailed',
-    'wq_depth', 'wq_time', 'wq_min_time', 'wq_max_time', 'version',
+    'wq_depth', 'wq_time', 'wq_min_time', 'wq_max_time',
 })
 
 _NET_COLUMNS = frozenset({
     'ibytes', 'ipackets', 'ierrors', 'obytes', 'opackets', 'oerrors',
-    'collisions', 'idrop', 'mtu', 'speed_mbps', 'type',
-    'ififo', 'iframe', 'icompressed', 'imulticast',
-    'odrop', 'ofifo', 'ocarrier', 'ocompressed', 'operstate',
-    'if_arpdrops', 'description',
+    'idrop', 'odrop', 'mtu', 'speed_mbps', 'type',
+    'operstate',        # Linux only
+    'description',      # AIX only
 })
 
 

@@ -56,9 +56,10 @@ rowid alias). PostgreSQL would use `BIGSERIAL PRIMARY KEY` or `GENERATED ALWAYS 
 - **All column names are snake_case.** Gatherer dicts must use snake_case keys
   at output time. camelCase keys are never stored.
 
-- **`bytes_total`/`bytes_free`/`bytes_available` use `f_frsize`** (fundamental
-  block size), not `f_bsize` (preferred I/O block size). These differ on some
-  filesystems; `f_frsize` is the POSIX-correct value.
+- **`bytes_total`/`bytes_free`/`bytes_available` are calculated from `f_frsize`**
+  (fundamental block size), not `f_bsize` (preferred I/O block size). These differ
+  on some filesystems; `f_frsize` is the POSIX-correct value. The raw block fields
+  are not stored; only the derived byte counts are.
 
 - **Slab data is large and optional.** It goes in a separate table and is only
   populated when `/proc/slabinfo` is readable (i.e., when running as root).
@@ -174,11 +175,8 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     -- AIX: CPU topology (NULL on Linux; use cpu_info for semi-static values)
     ncpus           INTEGER,    -- online CPUs this sample
     ncpus_cfg       INTEGER,    -- configured CPUs (may exceed online)
-    ncpus_high      INTEGER,    -- highest online CPU index seen
 
     -- AIX: additional system-call and I/O counters
-    -- NOTE: pswitch is renamed to ctxt by the gatherer; this column is always NULL on AIX
-    pswitch         INTEGER,    -- always NULL on AIX (value stored in ctxt above)
     syscall         INTEGER,    -- system calls
     sysread         INTEGER,    -- read system calls
     syswrite        INTEGER,    -- write system calls
@@ -188,7 +186,6 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     writech         INTEGER,    -- bytes written via write(2)
     devintrs        INTEGER,    -- device interrupts
     softintrs       INTEGER,    -- software interrupts
-    lbolt           INTEGER,    -- ticks since boot
     runque          INTEGER,    -- processes in run queue
     swpque          INTEGER,    -- processes in swap queue
     runocc          INTEGER,    -- run queue occupancy samples
@@ -212,14 +209,7 @@ CREATE TABLE IF NOT EXISTS cpu_stats (
     puser_spurr         INTEGER,
     psys_spurr          INTEGER,
     pidle_spurr         INTEGER,
-    pwait_spurr         INTEGER,
-    spurrflag           INTEGER,
-
-    -- AIX: hyperpage interrupts
-    hpi                 INTEGER,
-    hpit                INTEGER,
-
-    version             INTEGER
+    pwait_spurr         INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_cpu_stats_host_time ON cpu_stats (host_id, collected_at);
@@ -336,22 +326,15 @@ CREATE TABLE IF NOT EXISTS filesystems (
     fs_type         TEXT,               -- WPAR name or class (AIX 'type' field)
     options         TEXT,               -- mount options string
 
-    -- Space stats (NULL when mounted = 0 or f_blocks = 0)
-    -- Truncated to 4 decimal places at collection time.
+    -- Space stats (NULL when mounted = 0)
+    -- Byte counts derived from statvfs f_frsize (fundamental block size) × block counts.
+    -- pct_free/pct_available/pct_reserved are omitted; derivable from bytes_* at query time.
     bytes_total     INTEGER,            -- f_frsize × f_blocks
     bytes_free      INTEGER,            -- f_frsize × f_bfree
     bytes_available INTEGER,            -- f_frsize × f_bavail (excludes root reserve)
     pct_used        REAL,               -- (1 - f_bfree/f_blocks) × 100
-    pct_available   REAL,               -- (f_bavail/f_blocks) × 100
-    pct_free        REAL,               -- (f_bfree/f_blocks) × 100
-    pct_reserved    REAL,               -- (1 - f_bavail/f_blocks) × 100
 
-    -- Raw statvfs fields (NULL when not mounted)
-    f_bsize         INTEGER,            -- preferred I/O block size
-    f_frsize        INTEGER,            -- fundamental block size
-    f_blocks        INTEGER,            -- total blocks
-    f_bfree         INTEGER,            -- free blocks
-    f_bavail        INTEGER,            -- free blocks available to non-root
+    -- Inode stats (NULL when not mounted)
     f_files         INTEGER,            -- total inodes
     f_ffree         INTEGER,            -- free inodes
     f_favail        INTEGER             -- free inodes available to non-root
@@ -403,8 +386,7 @@ CREATE TABLE IF NOT EXISTS disk_total (
     wq_depth        INTEGER,    -- write queue depth samples
     wq_time         INTEGER,    -- write queue time
     wq_min_time     INTEGER,
-    wq_max_time     INTEGER,
-    version         INTEGER
+    wq_max_time     INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_disk_total_host_time ON disk_total (host_id, collected_at);
@@ -456,8 +438,7 @@ CREATE TABLE IF NOT EXISTS disk_devices_aix (
     wq_min_time     INTEGER,
     wq_max_time     INTEGER,
     wpar_id         INTEGER,            -- WPAR ID (0 = global LPAR)
-    dk_type         INTEGER,            -- device type code
-    version         INTEGER
+    dk_type         INTEGER             -- device type code
 );
 
 CREATE INDEX IF NOT EXISTS idx_disk_devices_aix_host_time ON disk_devices_aix (host_id, collected_at);
@@ -562,25 +543,16 @@ CREATE TABLE IF NOT EXISTS net_interfaces (
     obytes          INTEGER,    -- bytes sent
     opackets        INTEGER,    -- packets sent
     oerrors         INTEGER,    -- output errors
-    collisions      INTEGER,    -- collisions (CSMA interfaces)
     idrop           INTEGER,    -- input queue drops (Linux: rx dropped; AIX: renamed from if_iqdrops)
+    odrop           INTEGER,    -- tx packets dropped (Linux only; absent on AIX)
     mtu             INTEGER,    -- maximum transmission unit (bytes)
     speed_mbps      INTEGER,    -- link speed in Mbps (Linux: /sys/class/net/*/speed; AIX: bitrate÷1,000,000)
     type            INTEGER,    -- interface type code (ARPHRD; 1=Ethernet, 772=loopback, 65534=TUN/TAP)
 
     -- Linux-only (NULL on AIX)
-    ififo           INTEGER,    -- rx FIFO buffer errors
-    iframe          INTEGER,    -- rx frame alignment errors
-    icompressed     INTEGER,    -- rx compressed packets
-    imulticast      INTEGER,    -- rx multicast frames
-    odrop           INTEGER,    -- tx packets dropped
-    ofifo           INTEGER,    -- tx FIFO buffer errors
-    ocarrier        INTEGER,    -- tx carrier sense errors
-    ocompressed     INTEGER,    -- tx compressed packets
     operstate       TEXT,       -- link state (up/down/dormant/etc.; /sys/class/net/*/operstate)
 
     -- AIX-only (NULL on Linux)
-    if_arpdrops     INTEGER,    -- drops due to missing ARP entry
     description     TEXT        -- adapter description from ODM
 );
 

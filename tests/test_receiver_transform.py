@@ -91,9 +91,10 @@ class TestTransformCpuStats(unittest.TestCase):
             'psys_spurr': 25,
             'pidle_spurr': 800,
             'pwait_spurr': 5,
+            # Fields NOT in schema (should be excluded)
             'spurrflag': 1,
             'version': 3,
-            # Fields NOT in schema (should be excluded)
+            'lbolt': 999999,
             'bread': 999,
             'bwrite': 888,
             'puser': 999,
@@ -104,9 +105,11 @@ class TestTransformCpuStats(unittest.TestCase):
         self.assertEqual(row['ncpus'], 8)
         self.assertEqual(row['syscall'], 12345)
         self.assertEqual(row['puser_spurr'], 50)
-        self.assertEqual(row['version'], 3)
 
-        # Check non-schema fields are excluded
+        # Check dropped fields are excluded
+        self.assertNotIn('spurrflag', row)
+        self.assertNotIn('version', row)
+        self.assertNotIn('lbolt', row)
         self.assertNotIn('bread', row)
         self.assertNotIn('bwrite', row)
         self.assertNotIn('puser', row)
@@ -580,38 +583,42 @@ class TestTransformDisksAix(unittest.TestCase):
         self.assertEqual(disk_rows[0]['name'], 'hdisk0')
         self.assertEqual(disk_rows[0]['description'], 'IBM 146GB SAS Disk Drive')
         self.assertEqual(disk_rows[0]['size_bytes'], 146605465600)
+        self.assertNotIn('version', disk_rows[0])
 
         self.assertEqual(total_row['host_id'], 1)
         self.assertEqual(total_row['ndisks'], 2)
         self.assertEqual(total_row['xfers'], 180000)
+        self.assertNotIn('version', total_row)
 
 
 class TestTransformNetwork(unittest.TestCase):
     """Tests for transform_network."""
 
     def test_linux_all_fields(self):
-        """Linux interface with all 16 NET_DEV_KEYS present."""
+        """Linux interface fields — stored columns pass through, dropped columns are filtered."""
         network = {
             'eth0': {
+                # Stored columns
                 'ibytes': 100000000,
                 'ipackets': 1000000,
                 'ierrors': 10,
                 'idrop': 5,
-                'ififo': 0,
-                'iframe': 0,
-                'icompressed': 0,
-                'imulticast': 100,
                 'obytes': 50000000,
                 'opackets': 500000,
                 'oerrors': 5,
                 'odrop': 2,
+                'mtu': 1500,
+                'operstate': 'up',
+                'type': 1,
+                # Dropped columns (gatherer emits them, transform ignores them)
+                'ififo': 0,
+                'iframe': 0,
+                'icompressed': 0,
+                'imulticast': 100,
                 'ofifo': 0,
                 'collisions': 0,
                 'ocarrier': 0,
                 'ocompressed': 0,
-                'mtu': 1500,
-                'operstate': 'up',
-                'type': 1,
             },
         }
         rows = transform_network(network, host_id=1, collected_at=1234567890.0)
@@ -619,8 +626,19 @@ class TestTransformNetwork(unittest.TestCase):
         row = rows[0]
         self.assertEqual(row['iface'], 'eth0')
         self.assertEqual(row['ibytes'], 100000000)
+        self.assertEqual(row['odrop'], 2)
         self.assertEqual(row['operstate'], 'up')
         self.assertEqual(row['mtu'], 1500)
+
+        # Dropped columns must not appear in output
+        self.assertNotIn('collisions', row)
+        self.assertNotIn('ififo', row)
+        self.assertNotIn('iframe', row)
+        self.assertNotIn('icompressed', row)
+        self.assertNotIn('imulticast', row)
+        self.assertNotIn('ofifo', row)
+        self.assertNotIn('ocarrier', row)
+        self.assertNotIn('ocompressed', row)
 
     def test_linux_speed_mbps_optional(self):
         """speed_mbps is optional on Linux — absent when not in input."""
@@ -650,7 +668,7 @@ class TestTransformNetwork(unittest.TestCase):
         self.assertEqual(eth1['speed_mbps'], 1000)
 
     def test_aix_only_aix_fields(self):
-        """AIX interface only has AIX-specific fields."""
+        """AIX interface only has AIX-specific fields; Linux-only and dropped fields absent."""
         network = {
             'en0': {
                 'ibytes': 100000000,
@@ -660,26 +678,29 @@ class TestTransformNetwork(unittest.TestCase):
                 'obytes': 50000000,
                 'opackets': 500000,
                 'oerrors': 5,
-                'collisions': 0,
-                'if_arpdrops': 0,
                 'mtu': 1500,
                 'speed_mbps': 1000,
                 'type': 1,
                 'description': 'Ethernet',
+                # Dropped (not in schema)
+                'collisions': 0,
+                'if_arpdrops': 0,
             },
         }
         rows = transform_network(network, host_id=1, collected_at=1234567890.0)
 
         row = rows[0]
         self.assertEqual(row['iface'], 'en0')
-        self.assertEqual(row['if_arpdrops'], 0)
         self.assertEqual(row['description'], 'Ethernet')
+        self.assertEqual(row['idrop'], 5)
 
-        # Linux-only fields should be absent (not NULL, not in output)
+        # Dropped columns not in output
+        self.assertNotIn('collisions', row)
+        self.assertNotIn('if_arpdrops', row)
+        # Linux-only field absent (AIX doesn't emit it)
         self.assertNotIn('operstate', row)
-        self.assertNotIn('ififo', row)
+        # AIX doesn't emit odrop; not in output
         self.assertNotIn('odrop', row)
-        self.assertNotIn('ocarrier', row)
 
     def test_no_field_defaulting(self):
         """Absent fields are not included in output (no defaulting to NULL/0)."""
