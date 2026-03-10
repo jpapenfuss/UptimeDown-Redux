@@ -570,9 +570,10 @@ Required fields present in **every** filesystem entry (mounted or not):
 try to parse it, just validate it's a str).
 
 **AIX-specific fields** present in every AIX entry (mounted or not):
-`log` (str), `mount` (str), `type` (str), `account` (str). These are renamed
-during transform (`log→fs_log`, `mount→mount_auto`, `type→fs_type`); during
-validation just accept them as str. **These are NOT present on Linux.**
+`log` (str), `mount` (str), `type` (str), `account` (str). During validation
+just accept them as str. During transform, `log→fs_log`, `mount→mount_auto`,
+`type→fs_type` are renamed; `account` is dropped (not in schema).
+**These are NOT present on Linux.**
 
 When `mounted` is `False`, **only** the above required fields (and AIX-specific
 fields) are present. Do NOT require or check for statvfs fields on unmounted
@@ -849,10 +850,9 @@ def transform_disks_aix(disks: dict, disk_total: dict, host_id: int, collected_a
 def transform_network(network: dict, host_id: int, collected_at: float) -> list[dict]:
     """Returns list of row-dicts for net_interfaces table (one per interface).
     Each row-dict contains only the fields present in the input for that interface.
-    Linux-only fields (odrop, ififo, iframe, icompressed, imulticast, ofifo,
-    ocarrier, ocompressed, operstate) are absent from AIX rows — do NOT default
-    them to None/0. AIX-only fields (description, if_arpdrops) are absent from
-    Linux rows. Output key: collected_at."""
+    Linux-only field (operstate) is absent from AIX rows — do NOT default
+    it to None/0. AIX-only field (description) is absent from Linux rows.
+    Output key: collected_at."""
 ```
 
 **Key principles**:
@@ -903,8 +903,8 @@ def transform_network(network: dict, host_id: int, collected_at: float) -> list[
 | 12d | `transform_filesystems`: AIX `account` field dropped (not in schema, no rename) |
 | 13 | `transform_disks_linux`: sysfs fields bundled into `extra_json` |
 | 14 | `transform_disks_linux`: device with no sysfs data → `extra_json` is None |
-| 15 | `transform_network` (Linux): all 16 NET_DEV_KEYS fields present in output; `speed_mbps` absent when not in input (not every interface reports it) |
-| 15b | `transform_network` (AIX): only AIX fields present (`ibytes`, `ipackets`, `ierrors`, `idrop`, `obytes`, `opackets`, `oerrors`, `collisions`, `if_arpdrops`, `mtu`, `speed_mbps`, `type`, `description`); Linux-only fields (`odrop`, `ififo`, etc.) are absent (not NULL, not zero — just absent from input and output) |
+| 15 | `transform_network` (Linux): schema columns pass through (`ibytes`, `ipackets`, `ierrors`, `idrop`, `odrop`, `obytes`, `opackets`, `oerrors`, `mtu`, `operstate`, `type`); dropped NET_DEV_KEYS filtered out (`ififo`, `iframe`, `icompressed`, `imulticast`, `ofifo`, `collisions`, `ocarrier`, `ocompressed`); `speed_mbps` absent when not in input |
+| 15b | `transform_network` (AIX): only AIX fields present (`ibytes`, `ipackets`, `ierrors`, `idrop`, `obytes`, `opackets`, `oerrors`, `mtu`, `speed_mbps`, `type`, `description`); Linux-only fields (`operstate`, `odrop`) absent; dropped fields (`collisions`, `if_arpdrops`) absent |
 | 16 | `transform_network`: `iface` key is set from the outer dict key |
 | 17 | Full round-trip: load `massive_flasharray.json` → transform all sections → verify no crash, correct key names |
 | 18 | Full round-trip: load `massive_aix_with_wpars.json` → same |

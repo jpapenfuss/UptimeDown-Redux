@@ -12,7 +12,7 @@ UptimeDown reads system metrics directly from OS interfaces and outputs them as 
 - **AIX**: calls libperfstat via ctypes (CPU, memory, filesystems, disk, network)
 - **Metrics**: CPU (per-core + aggregate), memory, disk I/O, filesystems (usage, mount info), network interfaces
 
-Output is a single JSON object with per-subsystem timestamps. Optional daemon mode with configurable poll intervals.
+Output is a single JSON object with a unified `collected_at` timestamp. Optional daemon mode with configurable per-gatherer poll intervals.
 
 ## Running
 
@@ -33,8 +33,7 @@ Wanted to understand what `/proc` actually contains, how different tools parse i
 
 Only dependency: Python 3 standard library.
 
-## Known issues
+## Known limitations
 
-- Filesystem implementation is basic
 - No Windows support (would need Windows API via ctypes)
-- JSON schema could be more consistent between Linux/AIX
+- No persistence layer yet (HTTP receiver service in progress; Phases 1-4 complete)

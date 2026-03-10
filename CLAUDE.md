@@ -40,7 +40,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - **`linux_cpu.Cpu`** — `/proc/cpuinfo`, `/proc/stat`, `/proc/softirqs`. Exposes `cpuinfo_values` (hardware info) and `cpustat_values` (per-core usage counters + softirqs). Type coercion via `INTEGER_STATS`, `FLOAT_STATS`, `LIST_STATS` class constants.
 - **`linux_memory.Memory`** — `/proc/meminfo`, `/proc/slabinfo`. Exposes `stats` dict with `memory` and `slabs` sub-dicts. Uses `util.tobytes()` to normalize units (kB/MB/GB/TB → bytes, supporting both SI and IEC).
 - **`linux_filesystems.Filesystems`** — `/proc/mounts` (falls back to `/etc/mtab`), calls `os.statvfs()` for each real filesystem, computes usage percentages. Filters out virtual filesystems via `FS_IGNORE` list.
-- **`linux_disk.Disk`** — `/proc/diskstats`. Exposes `blockdevices` dict keyed by device name (DISKSTAT_KEYS fields). `/sys/block/` enrichment is stubbed out for future use.
+- **`linux_disk.Disk`** — `/proc/diskstats` and `/sys/block/` sysfs enrichment. Exposes `blockdevices` dict keyed by device name (DISKSTAT_KEYS fields + optional sysfs fields: size_bytes, rotational, physical_block_size, logical_block_size, scheduler, discard_granularity).
 - **`linux_network.Network`** — `/proc/net/dev` and `/sys/class/net/`. Exposes `interfaces` dict with per-interface stats.
 
 **AIX gatherers** (use libperfstat via ctypes):
@@ -63,12 +63,12 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 - `config.ini` controls daemon mode (`run_interval`, `max_iterations`). `log_level = DEBUG` gates JSON file dumps only — it does not change logger verbosity. Logger levels are hardcoded in `log_setup.py` (file: DEBUG, stderr: ERROR).
 - System ID tracking via `identity.py` — each run gets a unique system_id in JSON output (helps identify which box the metrics came from).
 - JSON output includes a `collected_at` timestamp (rounded to milliseconds for consistency).
-- When `log_level = DEBUG` in config.ini, JSON is also written to a dated file in the current directory (`<uuid>-<timestamp>.json`).
+- When `log_level = DEBUG` in config.ini, JSON is also written to a dated file in the current directory (`<system_id>-<timestamp>.json`).
 - Per-CPU enumeration tracking: AIX includes `ncpus_enumerated` in `cpustats` to detect SMT/core count changes.
 
 ## Documentation Maintenance
 
-**Requirement**: When you modify any Python file in `monitoring/` or `tests/`, you MUST update the corresponding section in `.claude/projects/-Volumes-...-UptimeDown/memory/project_reference.md`.
+**Requirement**: When you modify any Python file in `monitoring/` or `tests/`, you MUST update the corresponding section in `project_reference.md` in your Claude auto-memory directory.
 
 **What to update**:
 - Changed a function signature or method? Update it in the reference.
@@ -78,7 +78,7 @@ Platform-specific gatherer modules — each exposes a class that reads from OS i
 
 **When to update**: Update the reference **before committing**. Forgetting to do this defeats the purpose of the reference and makes future sessions unreliable.
 
-**How to update**: Edit `.claude/projects/-Volumes-...-UptimeDown/memory/project_reference.md` directly. The reference is organized by file (§ numbering), so find the relevant section and update it. Keep it accurate.
+**How to update**: Edit `project_reference.md` in your Claude auto-memory directory directly. The reference is organized by file (§ numbering), so find the relevant section and update it. Keep it accurate.
 
 Before running any AIX-specific command, verify it's valid for AIX (not a Linux/GNU-specific variant). For example, use smtctl not chdev for SMT, and avoid grep -P. List the commands you plan to run and let me confirm before executing.
 
