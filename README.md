@@ -33,7 +33,20 @@ Wanted to understand what `/proc` actually contains, how different tools parse i
 
 Only dependency: Python 3 standard library.
 
+## Receiver Service
+
+HTTP receiver for collecting metrics from distributed agents:
+
+- **Bearer token auth** with constant-time comparison
+- **Comprehensive JSON validation** (type checking, range validation, platform awareness)
+- **Schema-aware transform** layer (key renames, derived fields, extra_json bundling)
+- **SQLite persistence** with transaction semantics and host upsert logic
+- **Push client** in monitoring agents with exponential backoff retry, FIFO caching, automatic purge
+- **612+ tests**, all passing
+
+See [docs/receiver_plan.md](docs/receiver_plan.md) for architecture and [receiver/](receiver/) for implementation.
+
 ## Known limitations
 
 - No Windows support (would need Windows API via ctypes)
-- No persistence layer yet (HTTP receiver service in progress; Phases 1-4 complete)
+- SQLite only (production Postgres/MariaDB support planned as Phase 7)

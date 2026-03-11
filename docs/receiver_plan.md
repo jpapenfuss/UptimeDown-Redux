@@ -1,19 +1,20 @@
-# UptimeDown HTTP Receiver — Implementation Plan
+# UptimeDown HTTP Receiver — Implementation & Reference
 
-This document is a step-by-step guide for building the HTTP ingestion service.
-Each phase is self-contained and testable. Complete each phase fully (including
-tests) before moving to the next. **Do not skip ahead.**
+**Status**: Phases 1-6 complete (as of 2026-03-11). This document serves as both the
+original implementation plan and current reference for the receiver architecture.
 
 **Target environment**: Any OS with Python 3 (Linux, AIX, macOS, etc.). Receiver is
 pure Python stdlib; external dependencies are database drivers only.
 
 **Database support**:
-- **Primary**: PostgreSQL (`psycopg2` or `psycopg`)
-- **Alternative**: MariaDB (`mysql.connector`)
-- **Development/prototyping**: SQLite (`sqlite3`, stdlib)
 
-The receiver logic is database-agnostic; Phase 5 (db.py) implements driver-specific
-connection and parameterization.
+- **Current**: SQLite (`sqlite3`, stdlib) — development and testing
+- **Future (Phase 7)**: PostgreSQL (`psycopg2` or `psycopg`) — production primary
+- **Future (Phase 7)**: MariaDB (`mysql.connector`) — production alternative
+
+The receiver logic is database-agnostic; Phase 5 (db.py, currently SQLite) implements
+parameterized queries and transaction semantics. Phase 7 will abstract driver-specific
+code to support Postgres/MariaDB.
 
 ---
 
@@ -36,16 +37,19 @@ Agent (monitoring box)                    Receiver (central server)
 ```
 receiver/
     __init__.py
-    server.py          — HTTP server (Phase 1)
-    auth.py            — Authentication (Phase 2)
-    validate.py        — JSON structure + type validation (Phase 3)
-    transform.py       — Key renames, extra_json bundling, derived fields (Phase 4)
-    db.py              — Database connection + insert logic (Phase 5, future)
+    server.py          — HTTP server (Phase 1) ✓
+    auth.py            — Authentication (Phase 2) ✓
+    validate.py        — JSON structure + type validation (Phase 3) ✓
+    transform.py       — Key renames, extra_json bundling, derived fields (Phase 4) ✓
+    db.py              — Database connection + insert logic (Phase 5) ✓
 tests/
     test_receiver_server.py
     test_receiver_auth.py
     test_receiver_validate.py
     test_receiver_transform.py
+    test_receiver_db.py
+    test_receiver_push.py
+    test_receiver_config.py
 ```
 
 ---
@@ -918,25 +922,86 @@ def transform_network(network: dict, host_id: int, collected_at: float) -> list[
 
 ---
 
-## Phase 5: Database Layer (Future — Do Not Implement Yet)
+## Phase 5: Database Layer — SQLite ✓ COMPLETE
 
-This phase is documented here for context only. Do not implement it until
-Phases 1–4 are complete and tested.
+**Status**: Implemented 2026-03-10. SQLite only; production Postgres/MariaDB support deferred to Phase 7.
+
+**Implementation** (`receiver/db.py`, 370 lines):
+
+- Full schema DDL (9 tables matching SCHEMA.md)
+- **Parameterized queries**: All values use `?` placeholders; column names from hardcoded allowlists (transform.py frozensets)
+- **Host upsert**: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET last_seen = excluded.last_seen`
+- **Transaction semantics**: All inserts in single `with conn:` transaction (automatic rollback on error)
+- **Batch inserts**: `_insert_many()` for multi-row tables (filesystems, disks, network, memory_slabs)
+- **Transform→insert pipeline**: Each section validated, transformed via `receiver/transform.py`, then inserted
+
+**Integration** (`receiver/server.py`):
+
+- `initialize_db()`: Create schema at startup from RECEIVER_DB_PATH env var (defaults to `monitoring.db`)
+- POST /ingest: Call `db.ingest(conn, validated_data)` after envelope/section validation
+- Returns 202 on success, 500 on DB error
+
+**Tests** (`tests/test_receiver_db.py`, 28 tests):
+
+- Schema creation and idempotency
+- Host upsert (new/existing, preserved first_seen, stable id)
+- Single/batch insert helpers
+- Full ingest pipeline (Linux/AIX payloads)
+- Memory slabs (False→empty list, dict→rows)
+- Transaction rollback on error
+
+---
+
+## Phase 6: Push Client ✓ COMPLETE
+
+**Status**: Implemented 2026-03-11. Monitoring agents push metrics to receiver with retry logic and caching.
+
+**Implementation** (`monitoring/push.py`, 260 lines):
+
+- ReceiverClient class: HTTP POST with Bearer token auth
+- **Retry logic**: Exponential backoff (2^attempt seconds, configurable)
+- **Error categorization**: 4xx non-retryable (data invalid), 5xx/connection retryable
+- **FIFO caching**: Failed payloads cached to disk; resent before new data each cycle
+- **Cache purge**: Automatic deletion of entries older than `cache_max_age` (default 24h)
+- **SSL/TLS**: Uses `ssl.create_default_context()` with optional certificate verification toggle
+
+**Configuration** (`monitoring/config.py`):
+
+- [receiver] section in config.ini: url, token, timeout, retries, retry_backoff, cache_dir, cache_max_age, verify_ssl
+- RECEIVER_* environment variables (override ini)
+- CLI arguments --receiver-url, --receiver-token, etc. (override env vars)
+- **Hierarchy**: defaults → ini → env vars → CLI args
+
+**Integration** (`monitoring/__main__.py`):
+
+- Instantiate ReceiverClient after Config setup (if receiver_url AND receiver_token configured)
+- call push_client.send_cached() (resend FIFO), then push_client.push(jsonout) (new payload with retries)
+
+**Tests** (`tests/test_push.py`, 28 tests + `tests/test_config.py`, 20+ tests):
+
+- Initialization, URL parsing, HTTP send, retries, backoff, caching, cache purge
+- Config hierarchy validation (ini, env, CLI precedence)
+
+---
+
+## Phase 7: Production Database Support (Future)
 
 **Planned approach**:
-- `receiver/db.py` with connection pooling (or simple connection reuse)
+
+- Refactor `receiver/db.py` to abstract driver-specific code
+- Implement Postgres variant (`psycopg2` or `psycopg`)
+- Implement MariaDB variant (`mysql.connector`)
 - **Driver-specific parameterization**:
   - PostgreSQL/MariaDB: `%s` placeholders
   - SQLite: `?` placeholders
-- **Never** use string formatting/f-strings for SQL
-- Transaction per ingestion payload (all tables or rollback)
-- Host upsert (driver-specific syntax):
-  - PostgreSQL/MariaDB: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET last_seen = ...`
-  - SQLite: `INSERT OR REPLACE INTO hosts ...`
-- Batch inserts for multi-row tables (filesystems, disks, network, slabs)
-- PostgreSQL: use `psycopg2.extras.execute_values()` for batch efficiency
-- MariaDB: standard `executemany()` with `mysql.connector`
-- SQLite: use `executemany()` with `?` placeholders
+- **Host upsert** (driver-specific syntax):
+  - PostgreSQL/MariaDB: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET last_seen = excluded.last_seen`
+  - SQLite: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET` (already implemented)
+- **Batch inserts**:
+  - PostgreSQL: `psycopg2.extras.execute_values()` for efficiency
+  - MariaDB: standard `executemany()` with `mysql.connector`
+  - SQLite: `executemany()` with `?` placeholders (already implemented)
+- Test against real Postgres/MariaDB instances
 
 ---
 
@@ -972,19 +1037,20 @@ Apply these throughout ALL phases. Verify each one in code review.
 
 ---
 
-## Iteration Order for Haiku
+## Implementation Status (Historical)
 
-1. **Phase 1** → run tests → all 12 pass → commit
-2. **Phase 2** → run tests → all 13 pass → commit
-3. **Phase 3A-3B** (envelope + cpustats only) → run tests → commit
-4. **Phase 3C-3G** (remaining validators) → run tests → commit
-5. **Phase 4** → run tests → commit
+**Phases 1-6: Complete** (as of 2026-03-11)
 
-Run the full test suite after each phase: `python3 -m unittest discover -s tests`
+- ✓ Phase 1: HTTP server (16 tests)
+- ✓ Phase 2: Bearer token auth (13 tests)
+- ✓ Phase 3: JSON validation (68 tests)
+- ✓ Phase 4: Schema transform (28 tests)
+- ✓ Phase 5: SQLite database (28 tests)
+- ✓ Phase 6: Push client with caching (28 tests + 20+ config tests)
 
-Every function must have a docstring. Every test must have a descriptive name
-that says what it tests, not `test_1`, `test_2`. Example:
-`test_post_invalid_json_returns_400`, `test_system_id_with_sql_injection_rejected`.
+**Total**: 612+ tests passing, all phases committed.
+
+**Next phases** (if needed): See Phase 7 (Production Database Support) above.
 
 ---
 
