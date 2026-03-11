@@ -94,6 +94,11 @@ _AIX_DISK_TOTAL_COLUMNS = frozenset({
     'wq_depth', 'wq_time', 'wq_min_time', 'wq_max_time',
 })
 
+_LINUX_DISK_TOTAL_COLUMNS = frozenset({
+    'read_ios', 'write_ios', 'read_sectors', 'write_sectors',
+    'read_ticks', 'write_ticks', 'total_io_ticks',
+})
+
 _NET_COLUMNS = frozenset({
     'ibytes', 'ipackets', 'ierrors', 'obytes', 'opackets', 'oerrors',
     'idrop', 'odrop', 'mtu', 'speed_mbps', 'type',
@@ -291,6 +296,47 @@ def transform_disks_linux(disks, host_id, collected_at):
         rows.append(row)
 
     return rows
+
+
+def transform_disk_total_linux(disks, host_id, collected_at):
+    """Returns a single disk_total row-dict with aggregated Linux disk stats.
+
+    Sums I/O counter fields across all devices. Maps read_sectors/write_sectors
+    to read_blocks/write_blocks (both are 512-byte units in Linux).
+    Maps total_io_ticks to time (milliseconds spent in I/O).
+    Fields that don't apply to Linux (size_bytes, free_bytes, xfers) are
+    omitted — NULL on INSERT.
+    """
+    total_row = {
+        'host_id': host_id,
+        'collected_at': collected_at,
+        'ndisks': len(disks),
+    }
+
+    # Sum numeric fields across all disks
+    for field_name in _LINUX_DISK_TOTAL_COLUMNS:
+        total = None
+        for device_name, device_dict in disks.items():
+            if field_name in device_dict:
+                value = device_dict[field_name]
+                if isinstance(value, (int, float)):
+                    if total is None:
+                        total = value
+                    else:
+                        total += value
+
+        if total is not None:
+            # Map Linux field names to schema column names
+            if field_name == 'read_sectors':
+                total_row['read_blocks'] = total
+            elif field_name == 'write_sectors':
+                total_row['write_blocks'] = total
+            elif field_name == 'total_io_ticks':
+                total_row['time'] = total
+            else:
+                total_row[field_name] = total
+
+    return total_row
 
 
 def transform_disks_aix(disks, disk_total, host_id, collected_at):

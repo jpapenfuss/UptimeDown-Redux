@@ -350,16 +350,20 @@ CREATE INDEX IF NOT EXISTS idx_filesystems_mounted    ON filesystems (host_id, m
 
 ---
 
-### `disk_total` (AIX only)
+### `disk_total`
 
 Aggregate I/O stats across all disks. One row per collection run.
-Source: `perfstat_disk_total_t`. Linux has no equivalent — Linux disk data is
-per-device only (see `disk_devices_linux`).
 
-`read_blocks`/`write_blocks` are in **512-byte blocks** as defined by IBM's perfstat
-documentation, regardless of the physical sector size of individual disks. This
-is consistent with the Linux convention. The `bsize` field in `disk_devices_aix`
-gives each disk's actual physical block size.
+**AIX**: Source is `perfstat_disk_total_t`. Populated automatically by the
+`perfstat_disk_total()` system call. Fields like `size_bytes`, `free_bytes`,
+and service reservation fields come directly from AIX.
+
+**Linux**: Computed at ingestion time by summing per-device counters from all
+entries in `disk_devices_linux`. Windows/Darwin are not supported.
+
+`read_blocks`/`write_blocks` are in **512-byte blocks** (both platforms). On
+Linux, these are derived from `/proc/diskstats` sector counts. The `bsize` field
+in `disk_devices_aix` gives each disk's actual physical block size.
 
 ```sql
 CREATE TABLE IF NOT EXISTS disk_total (
@@ -784,11 +788,12 @@ In a distributed setup with many hosts, row count grows as O(hosts × samples ×
 | Filesystem % used | `filesystems` | `pct_used` (stored directly) |
 | CPU % busy | `cpu_stats` | LAG-diff of `(user+sys+iowait+irq+softirq+steal) / total_ticks` |
 | Network rx/tx bytes/sec | `net_interfaces` | LAG-diff of `ibytes`/`obytes` ÷ elapsed seconds |
-| Disk read/write IOPS | `disk_devices_linux` | LAG-diff of `read_ios`/`write_ios` ÷ elapsed seconds |
-| Disk read/write bytes/s | `disk_devices_linux` | LAG-diff of `read_sectors`/`write_sectors` × 512 ÷ elapsed seconds (always 512 regardless of physical sector size) |
-| AIX disk read/write bytes/s | `disk_devices_aix` | LAG-diff of `read_blocks`/`write_blocks` × 512 ÷ elapsed seconds |
+| Disk read/write IOPS (aggregate) | `disk_total` | LAG-diff of `read_ios`/`write_ios` ÷ elapsed seconds |
+| Disk read/write IOPS (per-device) | `disk_devices_linux` or `disk_devices_aix` | LAG-diff of device `read_ios`/`write_ios` ÷ elapsed seconds |
+| Disk read/write bytes/s (aggregate) | `disk_total` | LAG-diff of `read_blocks`/`write_blocks` × 512 ÷ elapsed seconds |
+| Disk read/write bytes/s (per-device) | `disk_devices_linux` | LAG-diff of `read_sectors`/`write_sectors` × 512 ÷ elapsed seconds |
+| AIX disk read/write bytes/s (per-device) | `disk_devices_aix` | LAG-diff of `read_blocks`/`write_blocks` × 512 ÷ elapsed seconds |
 | AIX load average | `cpu_stats` | `loadavg_1` (already a float; no conversion needed) |
-| AIX disk IOPS | `disk_total` or `disk_devices_aix` | LAG-diff of `read_ios`/`xfers` ÷ elapsed seconds |
 | AIX disk capacity used | `disk_devices_aix` | `size_bytes - free_bytes` |
 
 ---

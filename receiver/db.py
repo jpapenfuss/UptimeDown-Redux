@@ -9,6 +9,7 @@ from .transform import (
     transform_memory_slabs,
     transform_filesystems,
     transform_disks_linux,
+    transform_disk_total_linux,
     transform_disks_aix,
     transform_network,
 )
@@ -484,7 +485,7 @@ def ingest(conn, data):
         if "disks" in data:
             # Platform-explicit disk routing:
             # - AIX: perfstat_disk_total() provides native aggregate; transform returns (device_rows, total_row)
-            # - Linux: /proc/diskstats has only per-device entries; no native aggregate (would require summing in Python)
+            # - Linux: aggregate disk stats at collection time by summing per-device counters across all disks
             # Using platform instead of "disk_total" presence makes intent explicit and handles edge cases.
             if platform == "aix" and "disk_total" in data:
                 # AIX path: transform returns (disk_rows, total_row)
@@ -494,9 +495,14 @@ def ingest(conn, data):
                 _insert_many(conn, "disk_devices_aix", disk_rows)
                 _insert_one(conn, "disk_total", total_row)
             elif platform == "linux":
-                # Linux path: transform returns list of disk rows
+                # Linux path: transform returns list of device rows + one aggregate row
                 rows = transform_disks_linux(data["disks"], host_id, collected_at)
                 _insert_many(conn, "disk_devices_linux", rows)
+                # Compute and insert aggregate disk stats
+                total_row = transform_disk_total_linux(
+                    data["disks"], host_id, collected_at
+                )
+                _insert_one(conn, "disk_total", total_row)
             else:
                 logger.warning(
                     "Unexpected platform %s for disk ingest; skipping disks section",

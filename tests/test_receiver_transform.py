@@ -14,6 +14,7 @@ from receiver.transform import (
     transform_memory_slabs,
     transform_filesystems,
     transform_disks_linux,
+    transform_disk_total_linux,
     transform_disks_aix,
     transform_network,
 )
@@ -532,6 +533,141 @@ class TestTransformDisksLinux(unittest.TestCase):
 
         row = rows[0]
         self.assertIsNone(row['extra_json'])
+
+
+class TestTransformDiskTotalLinux(unittest.TestCase):
+    """Tests for transform_disk_total_linux."""
+
+    def test_single_disk(self):
+        """Single disk aggregation."""
+        disks = {
+            'sda': {
+                'major': 8,
+                'minor': 0,
+                'read_ios': 100,
+                'read_merge': 10,
+                'read_sectors': 1000,
+                'read_ticks': 50,
+                'write_ios': 50,
+                'write_merges': 5,
+                'write_sectors': 500,
+                'write_ticks': 25,
+                'in_flight': 0,
+                'total_io_ticks': 75,
+                'total_time_in_queue': 100,
+            },
+        }
+        row = transform_disk_total_linux(disks, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['host_id'], 1)
+        self.assertEqual(row['collected_at'], 1234567890.0)
+        self.assertEqual(row['ndisks'], 1)
+        self.assertEqual(row['read_ios'], 100)
+        self.assertEqual(row['write_ios'], 50)
+        self.assertEqual(row['read_blocks'], 1000)
+        self.assertEqual(row['write_blocks'], 500)
+        self.assertEqual(row['time'], 75)
+
+    def test_multiple_disks_sum(self):
+        """Multiple disks are summed."""
+        disks = {
+            'sda': {
+                'read_ios': 100,
+                'write_ios': 50,
+                'read_sectors': 1000,
+                'write_sectors': 500,
+                'read_ticks': 50,
+                'write_ticks': 25,
+                'total_io_ticks': 75,
+            },
+            'sdb': {
+                'read_ios': 200,
+                'write_ios': 100,
+                'read_sectors': 2000,
+                'write_sectors': 1000,
+                'read_ticks': 100,
+                'write_ticks': 50,
+                'total_io_ticks': 150,
+            },
+        }
+        row = transform_disk_total_linux(disks, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['ndisks'], 2)
+        self.assertEqual(row['read_ios'], 300)
+        self.assertEqual(row['write_ios'], 150)
+        self.assertEqual(row['read_blocks'], 3000)
+        self.assertEqual(row['write_blocks'], 1500)
+        self.assertEqual(row['read_ticks'], 150)
+        self.assertEqual(row['write_ticks'], 75)
+        self.assertEqual(row['time'], 225)
+
+    def test_sparse_fields(self):
+        """Devices with different field subsets — only present fields summed."""
+        disks = {
+            'sda': {
+                'read_ios': 100,
+                'write_ios': 50,
+            },
+            'sdb': {
+                'read_ios': 200,
+                'read_sectors': 2000,
+            },
+        }
+        row = transform_disk_total_linux(disks, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['ndisks'], 2)
+        self.assertEqual(row['read_ios'], 300)
+        self.assertEqual(row['write_ios'], 50)
+        self.assertIn('read_blocks', row)
+        self.assertEqual(row['read_blocks'], 2000)
+        self.assertNotIn('write_blocks', row)
+
+    def test_missing_optional_fields(self):
+        """Devices without certain fields — those fields omitted from total."""
+        disks = {
+            'nvme0n1': {
+                'read_ios': 100,
+                'write_ios': 50,
+            },
+        }
+        row = transform_disk_total_linux(disks, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['ndisks'], 1)
+        self.assertEqual(row['read_ios'], 100)
+        self.assertNotIn('read_blocks', row)
+        self.assertNotIn('write_blocks', row)
+        self.assertNotIn('time', row)
+
+    def test_all_fields_present(self):
+        """All summed fields are included when available."""
+        disks = {
+            'sda': {
+                'read_ios': 100,
+                'read_sectors': 1000,
+                'read_ticks': 50,
+                'write_ios': 50,
+                'write_sectors': 500,
+                'write_ticks': 25,
+                'total_io_ticks': 75,
+            },
+        }
+        row = transform_disk_total_linux(disks, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['read_ios'], 100)
+        self.assertEqual(row['read_blocks'], 1000)
+        self.assertEqual(row['read_ticks'], 50)
+        self.assertEqual(row['write_ios'], 50)
+        self.assertEqual(row['write_blocks'], 500)
+        self.assertEqual(row['write_ticks'], 25)
+        self.assertEqual(row['time'], 75)
+
+    def test_empty_disks_dict(self):
+        """Empty disks dict → ndisks=0, no other fields."""
+        row = transform_disk_total_linux({}, host_id=1, collected_at=1234567890.0)
+
+        self.assertEqual(row['ndisks'], 0)
+        # Only host_id, collected_at, and ndisks should be present
+        self.assertEqual(len(row), 3)
 
 
 class TestTransformDisksAix(unittest.TestCase):
