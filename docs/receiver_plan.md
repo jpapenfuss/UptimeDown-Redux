@@ -54,10 +54,12 @@ tests/
 
 ---
 
-## Phase 1: HTTP Server Skeleton
+## ~~Phase 1: HTTP Server Skeleton~~ ✅ COMPLETE
 
-**Goal**: Accept POST requests at `/ingest`, parse JSON body, return status codes.
+**Status**: Implemented 2026-03-08. Accept POST requests at `/ingest`, parse JSON body, return status codes.
 No validation beyond "is it JSON?" No auth. No database.
+
+**Implementation**: `receiver/server.py` with IngestHandler class, routing, Content-Type/Content-Length validation, 10 MB body size limit. 16 tests passing.
 
 ### File: `receiver/server.py`
 
@@ -247,10 +249,12 @@ class TestIngestServer(unittest.TestCase):
 
 ---
 
-## Phase 2: Authentication
+## ~~Phase 2: Authentication~~ ✅ COMPLETE
 
-**Goal**: Reject requests without a valid Bearer token. Tokens are pre-shared
+**Status**: Implemented 2026-03-08. Reject requests without a valid Bearer token. Tokens are pre-shared
 secrets (one per agent). No OAuth, no JWT, no sessions.
+
+**Implementation**: `receiver/auth.py` with `load_tokens()` and `check_auth()` using `hmac.compare_digest()` for constant-time comparison. 13 tests passing.
 
 ### File: `receiver/auth.py`
 
@@ -338,11 +342,12 @@ def _request(self, method, path, body=None, content_type="application/json", aut
 
 ---
 
-## Phase 3: JSON Validation
+## ~~Phase 3: JSON Validation~~ ✅ COMPLETE
 
-**Goal**: Validate that the parsed JSON matches the UptimeDown output structure.
+**Status**: Implemented 2026-03-09. Validate that the parsed JSON matches the UptimeDown output structure.
 Reject payloads with missing required fields, wrong types, or unexpected values.
-This is the most complex phase — take it slow.
+
+**Implementation**: `receiver/validate.py` with 11 validators (envelope, cpustats, cpuinfo, cpus, cloud, memory, disks, disk_total, filesystems, network, orchestrator). 68 tests passing. Returns 422 on validation failure with error details capped at 20 entries.
 
 ### File: `receiver/validate.py`
 
@@ -767,11 +772,12 @@ and negative tests (bad data caught). Use the example JSON files in
 
 ---
 
-## Phase 4: Schema Transform
+## ~~Phase 4: Schema Transform~~ ✅ COMPLETE
 
-**Goal**: Transform validated JSON into flat dicts ready for database INSERT.
-One function per target table. These functions apply the key renames documented
-in SCHEMA.md "Ingestion key mapping" section.
+**Status**: Implemented 2026-03-09. Transform validated JSON into flat dicts ready for database INSERT.
+One function per target table. These functions apply the key renames documented in SCHEMA.md.
+
+**Implementation**: `receiver/transform.py` with 8 functions (cpu_stats, cpu_info, memory, memory_slabs, filesystems, disks_linux, disks_aix, network). Per-table schema allowlists via frozensets for strict column filtering. 28 tests passing.
 
 ### File: `receiver/transform.py`
 
