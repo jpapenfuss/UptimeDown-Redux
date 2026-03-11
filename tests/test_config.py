@@ -342,5 +342,180 @@ class TestBaseTick(unittest.TestCase):
                 self.assertEqual(cfg.base_tick, 1)  # unchanged default
 
 
+class TestReceiverConfigDefaults(unittest.TestCase):
+    """Test default receiver configuration values."""
+
+    def test_receiver_defaults(self):
+        """Test that receiver defaults are applied."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            cfg = Config()
+            self.assertIsNone(cfg.receiver_url)
+            self.assertIsNone(cfg.receiver_token)
+            self.assertEqual(cfg.receiver_timeout, 10)
+            self.assertEqual(cfg.receiver_retries, 3)
+            self.assertTrue(cfg.receiver_retry_backoff)
+            self.assertIsNone(cfg.receiver_cache_dir)
+            self.assertEqual(cfg.receiver_cache_max_age, 86400)
+            self.assertTrue(cfg.receiver_verify_ssl)
+
+
+class TestReceiverConfigIniLoading(unittest.TestCase):
+    """Test loading [receiver] section from config.ini."""
+
+    def test_load_receiver_url(self):
+        """Test loading receiver_url from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "receiver"
+        mock_parser.has_option.side_effect = lambda s, o: s == "receiver" and o == "url"
+        mock_parser.get.return_value = "https://receiver.example.com:8443/ingest"
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_url, "https://receiver.example.com:8443/ingest")
+
+    def test_load_receiver_token(self):
+        """Test loading receiver_token from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "receiver"
+        mock_parser.has_option.side_effect = lambda s, o: s == "receiver" and o == "token"
+        mock_parser.get.return_value = "secret-token-123"
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_token, "secret-token-123")
+
+    def test_load_receiver_timeout(self):
+        """Test loading receiver_timeout from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "receiver"
+        mock_parser.has_option.side_effect = lambda s, o: s == "receiver" and o == "timeout"
+        mock_parser.getint.return_value = 30
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_timeout, 30)
+
+    def test_load_receiver_retries(self):
+        """Test loading receiver_retries from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "receiver"
+        mock_parser.has_option.side_effect = lambda s, o: s == "receiver" and o == "retries"
+        mock_parser.getint.return_value = 5
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_retries, 5)
+
+    def test_load_receiver_cache_dir(self):
+        """Test loading receiver_cache_dir from config.ini."""
+        mock_parser = MagicMock()
+        mock_parser.has_section.side_effect = lambda s: s == "receiver"
+        mock_parser.has_option.side_effect = lambda s, o: s == "receiver" and o == "cache_dir"
+        mock_parser.get.return_value = "/var/lib/uptimedown/push-cache"
+
+        with patch('monitoring.config.os.path.exists', return_value=True):
+            with patch('monitoring.config.configparser.ConfigParser', return_value=mock_parser):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_cache_dir, "/var/lib/uptimedown/push-cache")
+
+
+class TestReceiverEnvVarOverrides(unittest.TestCase):
+    """Test that environment variables override config.ini for receiver settings."""
+
+    def test_env_var_overrides_receiver_url(self):
+        """Test that RECEIVER_URL env var overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            with patch.dict(os.environ, {"RECEIVER_URL": "https://env.example.com/ingest"}):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_url, "https://env.example.com/ingest")
+
+    def test_env_var_overrides_receiver_token(self):
+        """Test that RECEIVER_TOKEN env var overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            with patch.dict(os.environ, {"RECEIVER_TOKEN": "env-token"}):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_token, "env-token")
+
+    def test_env_var_overrides_receiver_timeout(self):
+        """Test that RECEIVER_TIMEOUT env var overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            with patch.dict(os.environ, {"RECEIVER_TIMEOUT": "20"}):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_timeout, 20)
+
+    def test_env_var_overrides_receiver_cache_dir(self):
+        """Test that RECEIVER_CACHE_DIR env var overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            with patch.dict(os.environ, {"RECEIVER_CACHE_DIR": "/tmp/cache"}):
+                cfg = Config()
+                self.assertEqual(cfg.receiver_cache_dir, "/tmp/cache")
+
+
+class TestReceiverCliArgumentParsing(unittest.TestCase):
+    """Test CLI argument parser for receiver settings."""
+
+    def setUp(self):
+        """Set up test fixtures."""
+        self.parser = create_argument_parser()
+
+    def test_parse_receiver_url(self):
+        """Test parsing --receiver-url."""
+        args = self.parser.parse_args(['--receiver-url', 'https://receiver.example.com:8443/ingest'])
+        self.assertEqual(args.receiver_url, 'https://receiver.example.com:8443/ingest')
+
+    def test_parse_receiver_token(self):
+        """Test parsing --receiver-token."""
+        args = self.parser.parse_args(['--receiver-token', 'my-token'])
+        self.assertEqual(args.receiver_token, 'my-token')
+
+    def test_parse_receiver_timeout(self):
+        """Test parsing --receiver-timeout."""
+        args = self.parser.parse_args(['--receiver-timeout', '25'])
+        self.assertEqual(args.receiver_timeout, 25)
+
+    def test_parse_receiver_retries(self):
+        """Test parsing --receiver-retries."""
+        args = self.parser.parse_args(['--receiver-retries', '5'])
+        self.assertEqual(args.receiver_retries, 5)
+
+    def test_parse_receiver_cache_dir(self):
+        """Test parsing --receiver-cache-dir."""
+        args = self.parser.parse_args(['--receiver-cache-dir', '/var/cache/uptimedown'])
+        self.assertEqual(args.receiver_cache_dir, '/var/cache/uptimedown')
+
+
+class TestReceiverCliOverrides(unittest.TestCase):
+    """Test that CLI arguments override config.ini and env vars for receiver settings."""
+
+    def test_cli_overrides_receiver_url(self):
+        """Test that CLI --receiver-url overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            parser = create_argument_parser()
+            args = parser.parse_args(['--receiver-url', 'https://cli.example.com/ingest'])
+            cfg = Config(args)
+            self.assertEqual(cfg.receiver_url, 'https://cli.example.com/ingest')
+
+    def test_cli_overrides_receiver_token(self):
+        """Test that CLI --receiver-token overrides config.ini."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            parser = create_argument_parser()
+            args = parser.parse_args(['--receiver-token', 'cli-token'])
+            cfg = Config(args)
+            self.assertEqual(cfg.receiver_token, 'cli-token')
+
+    def test_cli_overrides_env_var(self):
+        """Test that CLI --receiver-url overrides environment variable."""
+        with patch('monitoring.config.os.path.exists', return_value=False):
+            with patch.dict(os.environ, {"RECEIVER_URL": "https://env.example.com/ingest"}):
+                parser = create_argument_parser()
+                args = parser.parse_args(['--receiver-url', 'https://cli.example.com/ingest'])
+                cfg = Config(args)
+                self.assertEqual(cfg.receiver_url, 'https://cli.example.com/ingest')
+
+
 if __name__ == '__main__':
     unittest.main()

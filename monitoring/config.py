@@ -26,7 +26,17 @@ class Config:
         self.data_dir = "collected-data"  # directory for JSON dumps
         self.gatherer_intervals = {}  # name -> int seconds; empty = all use run_interval
         self.base_tick = 1  # seconds — how often the main loop wakes to check gatherers
+        # Receiver push configuration
+        self.receiver_url = None  # receiver endpoint URL (e.g. https://receiver.example.com:8443/ingest)
+        self.receiver_token = None  # bearer token for authentication
+        self.receiver_timeout = 10  # seconds
+        self.receiver_retries = 3  # max attempts
+        self.receiver_retry_backoff = True  # use exponential backoff (2^attempt seconds)
+        self.receiver_cache_dir = None  # directory for caching failed payloads (None = disabled)
+        self.receiver_cache_max_age = 86400  # seconds (24 hours) — purge cache entries older than this
+        self.receiver_verify_ssl = True  # verify SSL certificates
         self._load_config()
+        self._load_env_vars()
         if args:
             self._apply_cli_overrides(args)
 
@@ -102,6 +112,133 @@ class Config:
                 if path:
                     self.data_dir = path
 
+        # Load receiver settings from [receiver] section
+        if parser.has_section("receiver"):
+            if parser.has_option("receiver", "url"):
+                url = parser.get("receiver", "url").strip()
+                if url:
+                    self.receiver_url = url
+            if parser.has_option("receiver", "token"):
+                token = parser.get("receiver", "token").strip()
+                if token:
+                    self.receiver_token = token
+            if parser.has_option("receiver", "timeout"):
+                try:
+                    val = parser.getint("receiver", "timeout")
+                    if val > 0:
+                        self.receiver_timeout = val
+                except ValueError:
+                    pass
+            if parser.has_option("receiver", "retries"):
+                try:
+                    val = parser.getint("receiver", "retries")
+                    if val >= 0:
+                        self.receiver_retries = val
+                except ValueError:
+                    pass
+            if parser.has_option("receiver", "retry_backoff"):
+                try:
+                    self.receiver_retry_backoff = parser.getboolean("receiver", "retry_backoff")
+                except ValueError:
+                    pass
+            if parser.has_option("receiver", "cache_dir"):
+                path = parser.get("receiver", "cache_dir").strip()
+                if path:
+                    self.receiver_cache_dir = path
+            if parser.has_option("receiver", "cache_max_age"):
+                try:
+                    val = parser.getint("receiver", "cache_max_age")
+                    if val > 0:
+                        self.receiver_cache_max_age = val
+                except ValueError:
+                    pass
+            if parser.has_option("receiver", "verify_ssl"):
+                try:
+                    self.receiver_verify_ssl = parser.getboolean("receiver", "verify_ssl")
+                except ValueError:
+                    pass
+
+    def _load_env_vars(self):
+        """Load environment variable overrides."""
+        # Daemon settings
+        if "RUN_INTERVAL" in os.environ:
+            try:
+                interval = int(os.environ["RUN_INTERVAL"])
+                if interval < 5:
+                    self.run_interval = 5
+                else:
+                    self.run_interval = interval
+            except ValueError:
+                pass
+
+        if "MAX_ITERATIONS" in os.environ:
+            try:
+                self.max_iterations = int(os.environ["MAX_ITERATIONS"])
+            except ValueError:
+                pass
+
+        if "LOG_LEVEL" in os.environ:
+            level = os.environ["LOG_LEVEL"].upper()
+            if level in ("DEBUG", "ERROR"):
+                self.log_level = level
+
+        if "DUMP_JSON" in os.environ:
+            val = os.environ["DUMP_JSON"].lower()
+            self.dump_json = val in ("true", "1", "yes")
+
+        if "DATA_DIR" in os.environ:
+            path = os.environ["DATA_DIR"].strip()
+            if path:
+                self.data_dir = path
+
+        # Receiver settings
+        if "RECEIVER_URL" in os.environ:
+            url = os.environ["RECEIVER_URL"].strip()
+            if url:
+                self.receiver_url = url
+
+        if "RECEIVER_TOKEN" in os.environ:
+            token = os.environ["RECEIVER_TOKEN"].strip()
+            if token:
+                self.receiver_token = token
+
+        if "RECEIVER_TIMEOUT" in os.environ:
+            try:
+                val = int(os.environ["RECEIVER_TIMEOUT"])
+                if val > 0:
+                    self.receiver_timeout = val
+            except ValueError:
+                pass
+
+        if "RECEIVER_RETRIES" in os.environ:
+            try:
+                val = int(os.environ["RECEIVER_RETRIES"])
+                if val >= 0:
+                    self.receiver_retries = val
+            except ValueError:
+                pass
+
+        if "RECEIVER_RETRY_BACKOFF" in os.environ:
+            val = os.environ["RECEIVER_RETRY_BACKOFF"].lower()
+            self.receiver_retry_backoff = val in ("true", "1", "yes")
+
+        if "RECEIVER_CACHE_DIR" in os.environ:
+            path = os.environ["RECEIVER_CACHE_DIR"].strip()
+            if path:
+                self.receiver_cache_dir = path
+
+        if "RECEIVER_CACHE_MAX_AGE" in os.environ:
+            try:
+                val = int(os.environ["RECEIVER_CACHE_MAX_AGE"])
+                if val > 0:
+                    self.receiver_cache_max_age = val
+            except ValueError:
+                pass
+
+        if "RECEIVER_VERIFY_SSL" in os.environ:
+            val = os.environ["RECEIVER_VERIFY_SSL"].lower()
+            self.receiver_verify_ssl = val in ("true", "1", "yes")
+
     def _apply_cli_overrides(self, args):
         """Apply command-line argument overrides to config."""
         if args.run_interval is not None:
@@ -126,6 +263,18 @@ class Config:
         if args.data_dir is not None:
             self.data_dir = args.data_dir
 
+        # Receiver CLI overrides
+        if hasattr(args, "receiver_url") and args.receiver_url is not None:
+            self.receiver_url = args.receiver_url
+        if hasattr(args, "receiver_token") and args.receiver_token is not None:
+            self.receiver_token = args.receiver_token
+        if hasattr(args, "receiver_timeout") and args.receiver_timeout is not None:
+            self.receiver_timeout = args.receiver_timeout
+        if hasattr(args, "receiver_retries") and args.receiver_retries is not None:
+            self.receiver_retries = args.receiver_retries
+        if hasattr(args, "receiver_cache_dir") and args.receiver_cache_dir is not None:
+            self.receiver_cache_dir = args.receiver_cache_dir
+
     def __repr__(self):
         return (
             f"Config(run_interval={self.run_interval}s, "
@@ -134,7 +283,11 @@ class Config:
             f"log_level={self.log_level}, "
             f"dump_json={self.dump_json}, "
             f"data_dir={self.data_dir!r}, "
-            f"gatherer_intervals={self.gatherer_intervals!r})"
+            f"gatherer_intervals={self.gatherer_intervals!r}, "
+            f"receiver_url={self.receiver_url!r}, "
+            f"receiver_token={'***' if self.receiver_token else None}, "
+            f"receiver_timeout={self.receiver_timeout}, "
+            f"receiver_cache_dir={self.receiver_cache_dir!r})"
         )
 
 
@@ -187,6 +340,38 @@ Examples:
         "--data-dir",
         default=None,
         help="Directory for JSON dump files (default: collected-data)",
+        metavar="PATH",
+    )
+    parser.add_argument(
+        "--receiver-url",
+        default=None,
+        help="Receiver endpoint URL (e.g. https://receiver.example.com:8443/ingest)",
+        metavar="URL",
+    )
+    parser.add_argument(
+        "--receiver-token",
+        default=None,
+        help="Bearer token for receiver authentication",
+        metavar="TOKEN",
+    )
+    parser.add_argument(
+        "--receiver-timeout",
+        type=int,
+        default=None,
+        help="Receiver request timeout in seconds (default: 10)",
+        metavar="SECONDS",
+    )
+    parser.add_argument(
+        "--receiver-retries",
+        type=int,
+        default=None,
+        help="Maximum receiver push retries (default: 3)",
+        metavar="NUM",
+    )
+    parser.add_argument(
+        "--receiver-cache-dir",
+        default=None,
+        help="Directory for caching failed payloads (disables caching if not set)",
         metavar="PATH",
     )
     return parser

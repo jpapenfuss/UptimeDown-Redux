@@ -26,11 +26,13 @@ if __package__:
     from .identity import get_system_id
     from .config import Config, create_argument_parser
     from .scheduler import GathererScheduler
+    from .push import ReceiverClient
 else:
     from log_setup import log_setup
     from identity import get_system_id
     from config import Config, create_argument_parser
     from scheduler import GathererScheduler
+    from push import ReceiverClient
 
 # sys.platform values: "linux", "aix", "darwin", "freebsd7" ... "freebsd14", etc.
 _PLATFORM = sys.platform
@@ -187,6 +189,9 @@ def main():
         cfg.base_tick,
     )
 
+    # Initialize receiver push client (if configured)
+    push_client = ReceiverClient(_SYSTEM_ID, cfg)
+
     iteration = 0
 
     while True:
@@ -205,6 +210,14 @@ def main():
         # Print diagnostics and JSON
         print_timings(timings)
         print(jsonout)
+
+        # Push to receiver (if configured)
+        # First, try to flush any cached payloads
+        if push_client.enabled:
+            push_client.send_cached()
+        # Then push the new payload
+        if push_client.enabled:
+            push_client.push(jsonout)
 
         # Dump JSON to file if enabled (via --dump flag or config.ini [output] dump_json)
         if cfg.dump_json:
