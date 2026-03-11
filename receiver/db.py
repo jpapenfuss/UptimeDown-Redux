@@ -331,6 +331,12 @@ def init_schema(conn):
     conn.executescript(_SCHEMA_DDL)
     conn.commit()
 
+    # Validate foreign key integrity (development/test safety check)
+    cursor = conn.execute("PRAGMA foreign_key_check")
+    violations = cursor.fetchall()
+    if violations:
+        logger.warning("Foreign key violations detected in schema: %s", violations)
+
 
 def upsert_host(conn, system_id, hostname, platform, collected_at) -> int:
     """Upsert a host record and return its id.
@@ -380,10 +386,19 @@ def _insert_one(conn, table, row):
     """
     if not row:
         return
+    if not isinstance(row, dict):
+        logger.error("Malformed row for table %s: expected dict, got %s", table, type(row).__name__)
+        return
     cols = list(row.keys())
     placeholders = ", ".join("?" * len(cols))
     sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders})"
-    conn.execute(sql, [row[c] for c in cols])
+    try:
+        conn.execute(sql, [row[c] for c in cols])
+    except KeyError as e:
+        logger.error("Malformed row for table %s: missing key %s", table, e)
+    except Exception as e:
+        logger.error("Insert failed for table %s: %s", table, e)
+        raise
 
 
 def _insert_many(conn, table, rows):
@@ -398,10 +413,22 @@ def _insert_many(conn, table, rows):
     """
     if not rows:
         return
+    if not isinstance(rows, list):
+        logger.error("Malformed rows for table %s: expected list, got %s", table, type(rows).__name__)
+        return
+    if not isinstance(rows[0], dict):
+        logger.error("Malformed rows for table %s: expected list of dicts, got list of %s", table, type(rows[0]).__name__)
+        return
     cols = list(rows[0].keys())
     placeholders = ", ".join("?" * len(cols))
     sql = f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({placeholders})"
-    conn.executemany(sql, [[r[c] for c in cols] for r in rows])
+    try:
+        conn.executemany(sql, [[r[c] for c in cols] for r in rows])
+    except KeyError as e:
+        logger.error("Malformed rows for table %s: missing key %s", table, e)
+    except Exception as e:
+        logger.error("Batch insert failed for table %s (%d rows): %s", table, len(rows), e)
+        raise
 
 
 def ingest(conn, data):
@@ -455,17 +482,26 @@ def ingest(conn, data):
             _insert_many(conn, "filesystems", rows)
 
         if "disks" in data:
-            if "disk_total" in data:
+            # Platform-explicit disk routing:
+            # - AIX: perfstat_disk_total() provides native aggregate; transform returns (device_rows, total_row)
+            # - Linux: /proc/diskstats has only per-device entries; no native aggregate (would require summing in Python)
+            # Using platform instead of "disk_total" presence makes intent explicit and handles edge cases.
+            if platform == "aix" and "disk_total" in data:
                 # AIX path: transform returns (disk_rows, total_row)
                 disk_rows, total_row = transform_disks_aix(
                     data["disks"], data["disk_total"], host_id, collected_at
                 )
                 _insert_many(conn, "disk_devices_aix", disk_rows)
                 _insert_one(conn, "disk_total", total_row)
-            else:
+            elif platform == "linux":
                 # Linux path: transform returns list of disk rows
                 rows = transform_disks_linux(data["disks"], host_id, collected_at)
                 _insert_many(conn, "disk_devices_linux", rows)
+            else:
+                logger.warning(
+                    "Unexpected platform %s for disk ingest; skipping disks section",
+                    platform,
+                )
 
         if "network" in data:
             rows = transform_network(data["network"], host_id, collected_at)
