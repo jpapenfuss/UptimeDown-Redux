@@ -252,6 +252,8 @@ class TestReceiverAuthIntegration(unittest.TestCase):
         return json.dumps({
             "system_id": "test-system",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }).encode("utf-8")

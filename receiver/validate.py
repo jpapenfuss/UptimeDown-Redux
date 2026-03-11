@@ -10,7 +10,7 @@ def validate_envelope(data: dict) -> list[str]:
     """
     Validate the top-level envelope structure.
 
-    Required keys: system_id, collected_at, collection_errors, cloud
+    Required keys: system_id, collected_at, hostname, platform, collection_errors, cloud
     Optional keys: cpustats, cpuinfo, cpus, memory, disks, disk_total,
                   filesystems, network
 
@@ -23,7 +23,7 @@ def validate_envelope(data: dict) -> list[str]:
         return ["Payload must be a JSON dict, not a list or scalar"]
 
     # Define allowed keys
-    required_keys = {"system_id", "collected_at", "collection_errors", "cloud"}
+    required_keys = {"system_id", "collected_at", "hostname", "platform", "collection_errors", "cloud"}
     optional_keys = {
         "cpustats",
         "cpuinfo",
@@ -92,6 +92,26 @@ def validate_envelope(data: dict) -> list[str]:
         )
     elif isinstance(data["cloud"], dict) and not data["cloud"]:
         errors.append("cloud dict must be non-empty (not empty dict)")
+
+    # Validate hostname
+    if "hostname" not in data:
+        errors.append("Missing required key: hostname")
+    elif not isinstance(data["hostname"], str):
+        errors.append(
+            f"hostname must be str, got {type(data['hostname']).__name__}"
+        )
+    elif not data["hostname"].strip():
+        errors.append("hostname must be non-empty")
+
+    # Validate platform
+    if "platform" not in data:
+        errors.append("Missing required key: platform")
+    elif not isinstance(data["platform"], str):
+        errors.append(
+            f"platform must be str, got {type(data['platform']).__name__}"
+        )
+    elif not data["platform"].strip():
+        errors.append("platform must be non-empty")
 
     return errors
 

@@ -5,10 +5,12 @@ import time
 import logging
 import os
 import sys
+import sqlite3
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from .auth import load_tokens, check_auth
 from .validate import validate_payload
+from . import db
 
 MAX_BODY_BYTES = 10 * 1024 * 1024
 
@@ -16,6 +18,9 @@ logger = logging.getLogger("receiver")
 
 # Global set of valid tokens (loaded at startup)
 _VALID_TOKENS = set()
+
+# Database path (set by initialize_db)
+_DB_PATH = None
 
 
 def initialize_tokens():
@@ -43,6 +48,29 @@ def initialize_tokens():
         sys.exit(1)
 
     logger.info("Loaded %d authentication tokens", len(_VALID_TOKENS))
+
+
+def initialize_db():
+    """
+    Initialize the database with schema if needed.
+
+    Database path is read from RECEIVER_DB_PATH environment variable
+    (defaults to monitoring.db in the current directory).
+
+    Raises:
+        SystemExit: If database initialization fails.
+    """
+    global _DB_PATH
+
+    _DB_PATH = os.environ.get("RECEIVER_DB_PATH", "monitoring.db")
+    try:
+        conn = sqlite3.connect(_DB_PATH)
+        db.init_schema(conn)
+        conn.close()
+        logger.info("Database initialized: %s", _DB_PATH)
+    except Exception as e:
+        logger.error("Failed to initialize database: %s", e)
+        sys.exit(1)
 
 
 class IngestHandler(BaseHTTPRequestHandler):
@@ -285,6 +313,26 @@ class IngestHandler(BaseHTTPRequestHandler):
             )
             return
 
+        # Database ingestion (if enabled)
+        if _DB_PATH:
+            try:
+                conn = sqlite3.connect(_DB_PATH)
+                db.ingest(conn, data)
+                conn.close()
+            except Exception as e:
+                logger.error("Database error during ingest: %s", e)
+                self._send_json(500, {"error": "internal server error"})
+                elapsed_ms = int((time.monotonic() - start) * 1000)
+                logger.info(
+                    "%s %s %s 500 Content-Length=%d elapsed=%dms",
+                    remote_ip,
+                    self.command,
+                    self.path,
+                    content_length,
+                    elapsed_ms,
+                )
+                return
+
         # Success
         self._send_json(202, {"status": "accepted"})
         elapsed_ms = int((time.monotonic() - start) * 1000)
@@ -365,6 +413,9 @@ def main():
     """Start the HTTP receiver server."""
     # Load authentication tokens
     initialize_tokens()
+
+    # Initialize database
+    initialize_db()
 
     # Start server
     port = int(os.environ.get("RECEIVER_PORT", "8443"))

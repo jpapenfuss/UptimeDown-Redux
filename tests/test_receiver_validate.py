@@ -25,6 +25,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-system-001",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -35,6 +37,8 @@ class TestValidateEnvelope(unittest.TestCase):
         """Test: Missing system_id key."""
         data = {
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -46,6 +50,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": 12345,
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -57,6 +63,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -68,6 +76,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "'; DROP TABLE hosts;--",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -79,6 +89,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "a" * 65,
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -90,6 +102,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": "2023-11-15",
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -101,6 +115,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": -100,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -112,6 +128,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 100000000,  # ~1973
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -123,6 +141,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 2500000000,  # ~2049
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
         }
@@ -134,6 +154,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
             "malicious_key": "evil",
@@ -146,6 +168,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": [],
             "cloud": False,
         }
@@ -157,6 +181,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
         }
         errors = validate_envelope(data)
@@ -167,6 +193,8 @@ class TestValidateEnvelope(unittest.TestCase):
         data = {
             "system_id": "test-001",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": None,
         }
@@ -879,6 +907,8 @@ class TestFullPayload(unittest.TestCase):
         data = {
             "system_id": "test-system",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
             "cpustats": {
@@ -900,6 +930,8 @@ class TestFullPayload(unittest.TestCase):
         data = {
             "system_id": "",  # Invalid
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
             "memory": {
@@ -917,6 +949,8 @@ class TestFullPayload(unittest.TestCase):
         data = {
             "system_id": "test-system",
             "collected_at": 1700000000.0,
+            "hostname": "test-host",
+            "platform": "linux",
             "collection_errors": {},
             "cloud": False,
             "cpustats": {

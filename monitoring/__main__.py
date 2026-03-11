@@ -17,6 +17,7 @@ sys.dont_write_bytecode = True
 import json
 import time
 import os
+import socket
 
 # Support both `python3 monitoring` (script-style) and `python3 -m monitoring`
 # (package-style) execution modes.
@@ -132,7 +133,13 @@ def _assemble_json(cache, collected_at, json_module, errors=None, names=None):
     Failed gatherers have cache[name] = None and are skipped during merge.
     Only gatherers in *names* are included in output (if provided).
     """
-    output = {"system_id": _SYSTEM_ID, "collected_at": collected_at, "collection_errors": errors or {}}
+    output = {
+        "system_id": _SYSTEM_ID,
+        "collected_at": collected_at,
+        "hostname": socket.gethostname(),
+        "platform": _PLATFORM,
+        "collection_errors": errors or {},
+    }
     for name, data in cache.items():
         if data is not None and (names is None or name in names):
             output.update(data)
