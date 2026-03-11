@@ -4,9 +4,16 @@ This document is a step-by-step guide for building the HTTP ingestion service.
 Each phase is self-contained and testable. Complete each phase fully (including
 tests) before moving to the next. **Do not skip ahead.**
 
-Target: Python 3 stdlib only for the receiver itself. Database drivers
-(`psycopg2`/`psycopg` for PostgreSQL, optionally `mysql.connector` for MariaDB)
-are the only allowed external dependencies.
+**Target environment**: Any OS with Python 3 (Linux, AIX, macOS, etc.). Receiver is
+pure Python stdlib; external dependencies are database drivers only.
+
+**Database support**:
+- **Primary**: PostgreSQL (`psycopg2` or `psycopg`)
+- **Alternative**: MariaDB (`mysql.connector`)
+- **Development/prototyping**: SQLite (`sqlite3`, stdlib)
+
+The receiver logic is database-agnostic; Phase 5 (db.py) implements driver-specific
+connection and parameterization.
 
 ---
 
@@ -918,13 +925,18 @@ Phases 1–4 are complete and tested.
 
 **Planned approach**:
 - `receiver/db.py` with connection pooling (or simple connection reuse)
-- Parameterized queries only (`%s` placeholders for psycopg2, `?` for sqlite3)
+- **Driver-specific parameterization**:
+  - PostgreSQL/MariaDB: `%s` placeholders
+  - SQLite: `?` placeholders
 - **Never** use string formatting/f-strings for SQL
 - Transaction per ingestion payload (all tables or rollback)
-- Host upsert: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET last_seen = ...`
+- Host upsert (driver-specific syntax):
+  - PostgreSQL/MariaDB: `INSERT ... ON CONFLICT (system_id) DO UPDATE SET last_seen = ...`
+  - SQLite: `INSERT OR REPLACE INTO hosts ...`
 - Batch inserts for multi-row tables (filesystems, disks, network, slabs)
 - PostgreSQL: use `psycopg2.extras.execute_values()` for batch efficiency
 - MariaDB: standard `executemany()` with `mysql.connector`
+- SQLite: use `executemany()` with `?` placeholders
 
 ---
 

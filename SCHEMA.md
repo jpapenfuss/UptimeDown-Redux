@@ -9,17 +9,18 @@ before modifying database or ingestion code.
 ## Database Target
 
 The canonical deployment is a **central PostgreSQL database** receiving data from
-multiple decentralized agents. PostgreSQL is recommended over SQLite for any
-multi-host setup because:
+multiple decentralized agents. PostgreSQL is the recommended primary target.
 
-- Multiple agents write concurrently; SQLite's write lock does not scale
-- PostgreSQL's `LAG()` / `LEAD()` window functions are standard and efficient
-- Partitioning by time (`collected_at`) becomes practical at scale
+**Alternative targets**:
+- **MariaDB**: Supported as an alternative to PostgreSQL (same parameterization syntax, different connection driver)
+- **SQLite**: Acceptable for single-host local dev/testing or as an agent-side write buffer before forwarding to the central store
 
-**SQLite** is acceptable for single-host local dev/testing or as an agent-side
-write buffer before forwarding to the central store. The schema is written in
-standard SQL; the only SQLite-specific quirk is `INTEGER PRIMARY KEY` (implicit
-rowid alias). PostgreSQL would use `BIGSERIAL PRIMARY KEY` or `GENERATED ALWAYS AS IDENTITY`.
+**Multi-host concurrency**: For any production multi-host setup, use PostgreSQL or MariaDB. SQLite's write lock does not scale to concurrent agent writes.
+
+**SQL dialect notes**: The schema is written in standard SQL. Database-specific quirks:
+- PostgreSQL: `BIGSERIAL PRIMARY KEY` or `GENERATED ALWAYS AS IDENTITY`
+- MariaDB: `BIGINT AUTO_INCREMENT PRIMARY KEY`
+- SQLite: `INTEGER PRIMARY KEY` (implicit rowid alias)
 
 ---
 
